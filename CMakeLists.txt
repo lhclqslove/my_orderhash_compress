@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.10)
 project(my_orderhash_compress VERSION 0.1
         LANGUAGES C CXX)
 
@@ -69,6 +69,112 @@ add_library(libbsc
         libbsc/platform/platform.cpp
         libbsc/st/st.cpp
         )
+target_include_directories(libbsc
+        PUBLIC libbsc)
+
+target_compile_options(libbsc
+        PUBLIC
+        -g -Wall#gcc编译器参数显示所有警告
+
+        # Comment out CFLAGS line below for compatability mode for 32bit file sizes
+        # (less than 2GB) and systems that have compilers that treat int as 64bit
+        # natively (ie: modern AIX)
+        -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
+
+        # Comment out CFLAGS line below to disable optimizations
+        -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math
+
+        # Comment out CFLAGS line below to disable AVX2 instruction set (performance will suffer)
+        -mavx2
+
+        # Comment out CFLAGS line below to disable OpenMP optimizations
+        # We disable this here and parallelize at the top level
+        # -fopenmp -DLIBBSC_OPENMP_SUPPORT
+
+        # Comment out CFLAGS line below to enable debug output
+        -DNDEBUG
+
+        # Comment out CFLAGS line below to disable unaligned memory access
+        -DLIBBSC_ALLOW_UNALIGNED_ACCESS
+        )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(libbsc PUBLIC OpenMP::OpenMP_CXX -DLIBBSC_OPENMP_SUPPORT)
+endif()
 
 
-add_executable(my_orderhash_compress main.cpp)
+#######################################################
+#minimap2
+
+add_custom_target(
+        MINIMAP2
+        COMMAND make clean && make
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/minimap2/
+)
+
+
+#######################################################
+#fast-lzma2
+
+add_custom_target(
+        FASTLZMA2
+        COMMAND make clean && make
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/fast-lzma2/
+)
+
+#######################################################
+add_library(springlib
+        STATIC
+        include/DirectoryUtils.h
+        src/DirectoryUtils.cpp)
+target_include_directories(springlib
+        PUBLIC include src
+        PUBLIC libbsc
+        PUBLIC minimap2 fast-lzma2
+        )
+target_compile_options(springlib
+        PUBLIC
+        -W -Wall -Wextra)
+
+target_compile_options(springlib
+        PUBLIC
+        $<$<CONFIG:Release>:-O3 -msse4.1>)
+target_compile_options(springlib
+        PUBLIC
+        $<$<CONFIG:RelWithDebInfo>:-g -O3 -msse4.1>)
+target_compile_options(springlib
+        PUBLIC
+        $<$<CONFIG:Debug>:-g -O3 -msse4.1 -fsanitize=address -fno-omit-frame-pointer>)
+if ( CHECKS )
+    target_compile_options(springlib
+            PUBLIC
+            -DCHECKS)
+endif()
+if ( LOG )
+    target_compile_options(springlib
+            PUBLIC
+            -DLOG)
+endif()
+if ( USE_MALLOC_TRIM )
+    target_compile_options(springlib
+            PUBLIC
+            -DUSE_MALLOC_TRIM)
+endif()
+target_compile_definitions(springlib PUBLIC "$<$<CONFIG:Debug>:DEBUG>")
+target_compile_definitions(springlib PUBLIC "$<$<CONFIG:RelWithDebInfo>:DEBUG>")
+
+add_dependencies(springlib MINIMAP2)
+add_dependencies(springlib FASTLZMA2)
+
+target_link_libraries(springlib
+        PUBLIC
+        libbsc
+        ${CMAKE_CURRENT_SOURCE_DIR}/minimap2/libminimap2.a
+        ${CMAKE_CURRENT_SOURCE_DIR}/fast-lzma2/libfast-lzma2.a
+        Boost::filesystem
+        Boost::iostreams
+        Boost::program_options
+        -lz -ldl -lm -lpthread
+        )
+add_executable(my_orderhash_compress src/main.cpp)
+target_link_libraries(my_orderhash_compress PUBLIC springlib)

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="lhcserver (ca44c8b0-f005-4391-a910-5be5c75436a9)" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="huangnengserver (117cdd3f-e8b7-49ba-829b-795fd6cb1b26)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/tmp.MPWAQnoURh" local="$PROJECT_DIR$" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="lhcserver (3ab9a2f4-2533-450d-b88a-82ebcaf762b3)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/lihc/projects/my_orderhash_compress" local="$PROJECT_DIR$" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="lhcserver (ca44c8b0-f005-4391-a910-5be5c75436a9)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
