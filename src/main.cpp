@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     std::string infile, outfile;
     int num_thr;
     std::string working_dir;
-    size_t k, n,l, m_k, m_w, max_chain_iter, edge_threshold;
+    size_t k, n,l,max_occ, m_k, m_w, max_chain_iter, edge_threshold;
     po::options_description desc("Allowed options");
     desc.add_options()("help,h", po::bool_switch(&help_flag), "produce help message")(
             "compress,c", po::bool_switch(&compress_flag), "compress")(
@@ -47,7 +47,9 @@ int main(int argc, char **argv) {
             "kmer,k", po::value<size_t>(&k)->default_value(23))(
             "num_kmer,l",po::value<size_t>(&l)->default_value(2),"orderhash number kmer for per hashval")(
             "num-hash,n", po::value<size_t>(&n)->default_value(60),
-            "number of hash functions for minhash (default 60)")(
+            "number of hash functions for orderhash (default 60)")(
+            "max_occ",po::value<size_t>(&max_occ)->default_value(3),"orderhash only sensitive for kmer with occ<maxocc"
+                    )(
             "minimap-k", po::value<size_t>(&m_k)->default_value(20),
             "kmer size for the minimap2 (default 20)")(
             "minimap-w, w", po::value<size_t>(&m_w)->default_value(50),

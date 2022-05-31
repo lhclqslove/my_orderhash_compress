@@ -115,7 +115,6 @@ add_custom_target(
 
 #######################################################
 #fast-lzma2
-
 add_custom_target(
         FASTLZMA2
         COMMAND make clean && make
@@ -126,7 +125,14 @@ add_custom_target(
 add_library(springlib
         STATIC
         include/DirectoryUtils.h
-        src/DirectoryUtils.cpp)
+        src/DirectoryUtils.cpp
+        include/dnaToBits.h
+        src/dnaToBits.cpp
+        include/Read.h
+        src/Read.cpp
+        include/ReadData.h
+        src/ReadData.cpp
+        include/Types.h include/Compressor.h src/Compressor.cpp)
 target_include_directories(springlib
         PUBLIC include src
         PUBLIC libbsc
