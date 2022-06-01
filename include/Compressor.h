@@ -8,10 +8,11 @@
 #include <iostream>
 #include "ReadData.h"
 
+
 class Compressor {
 public:
     /** Parameters for filtering **/
-    size_t k, n,l, m_k, m_w, max_chain_iter, edge_threshold;
+    size_t k, n,l, m_k, max_occ,m_w, max_chain_iter, edge_threshold;
     ReadData::Filetype filetype = ReadData::Filetype::READ;
 //    ReadAligner *rA;
 

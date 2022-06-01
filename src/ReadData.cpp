@@ -17,6 +17,7 @@ void ReadData::loadFromFile(const char *filename, enum Filetype filetype) {
             loadFromFastqFile(filename, false);
         case GZIP:
             loadFromFastqFile(filename, true);
+
     }
 }
 void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
@@ -82,4 +83,11 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
     }
     // close files
     infile.close();
+}
+read_t ReadData::getNumReads() {
+    return numReads;
+}
+void ReadData::getRead(read_t readId, std::string &readStr) {
+    readData[readId]->read->to_string(readStr);
+    return;
 }

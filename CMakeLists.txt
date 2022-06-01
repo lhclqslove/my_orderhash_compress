@@ -132,7 +132,15 @@ add_library(springlib
         src/Read.cpp
         include/ReadData.h
         src/ReadData.cpp
-        include/Types.h include/Compressor.h src/Compressor.cpp)
+        include/Types.h
+        include/Compressor.h
+        src/Compressor.cpp
+        include/ReadFilter.h
+        src/ReadFilter.cpp
+        include/BBHashMap.h
+        src/BBHashMap.cpp
+        include/BooPHF.h
+        )
 target_include_directories(springlib
         PUBLIC include src
         PUBLIC libbsc
@@ -182,5 +190,9 @@ target_link_libraries(springlib
         Boost::program_options
         -lz -ldl -lm -lpthread
         )
+# OpenMp support
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(springlib PUBLIC OpenMP::OpenMP_CXX)
+endif()
 add_executable(my_orderhash_compress src/main.cpp)
 target_link_libraries(my_orderhash_compress PUBLIC springlib)

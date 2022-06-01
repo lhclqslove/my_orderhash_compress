@@ -23,6 +23,7 @@ class ReadData
         /// 加载序列文件存入DNAbitset
         /// \param filename
         /// \param filetype
+
         void loadFromFile(const char *filename,enum  Filetype filetype=FASTQ);
 
         /**
@@ -35,7 +36,19 @@ class ReadData
         * @return char
         */
         static char toComplement(char base);
-
+        /**
+        * @brief Get the number of reads
+        *
+        * @return read_t
+        */
+        read_t getNumReads();
+        /**
+        * @brief Returns the read with readId as a string
+        *
+        * @param readId, readStr
+        * @return none
+        */
+        void getRead(read_t readId, std::string &readStr);
         /**
          * @brief Turns a DNA strand to its reverse complement.
          *
