@@ -51,6 +51,8 @@ endif()
 set( Boost_NO_SYSTEM_PATHS ON ) # do not use system boost
 add_subdirectory(boost-cmake)
 
+#xxhash
+find_package(xxHash 0.7 CONFIG REQUIRED)
 #######################################################
 #######################################################
 # libbsc 通用压缩器，用于之后的通用压缩
@@ -140,6 +142,7 @@ add_library(springlib
         include/BBHashMap.h
         src/BBHashMap.cpp
         include/BooPHF.h
+        include/xxhash.hpp
         )
 target_include_directories(springlib
         PUBLIC include src
@@ -189,7 +192,9 @@ target_link_libraries(springlib
         Boost::iostreams
         Boost::program_options
         -lz -ldl -lm -lpthread
+        xxHash::xxhash
         )
+
 # OpenMp support
 if(OpenMP_CXX_FOUND)
     target_link_libraries(springlib PUBLIC OpenMP::OpenMP_CXX)

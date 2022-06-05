@@ -10,10 +10,10 @@
 #include <unistd.h>
 #include <string>
 #include <omp.h>
+#include "DirectoryUtils.h"
+#include "ReadFilter.h"
 #ifdef USE_MALLOC_TRIM
     #include <malloc.h>
-
-
 #endif
 void mem_usage(double& vm_usage, double& resident_set) {
     // from https://www.tutorialspoint.com/how-to-get-memory-usage-at-runtime-using-cplusplus
@@ -42,12 +42,12 @@ void mem_usage(double& vm_usage, double& resident_set) {
     cout << "resident_set: " << resident_set << " KB\n";
 }
 void Compressor::compress(const char *inputFileName, const int numThr) const {
-    std::cout<<"number of threads: "<<numThr<<std::endl;
+    std::cout << "number of threads: " << numThr << std::endl;
     double vm_usage, resident_set;
     std::cout << "Entering compress():\n";
-    if (low_mem) {
-        std::cout << "Using low memory compression mode.\n";
-    }
+//    if (low_mem) {
+//        std::cout << "Using low memory compression mode.\n";
+//    }
     mem_usage(vm_usage, resident_set);
     omp_set_num_threads(numThr);
     {
@@ -63,10 +63,11 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
         std::cout << "After rD.loadFromFile():\n";
         mem_usage(vm_usage, resident_set);
 
-        MinHashReadFilter rF;
+        OrderHashReadFilter rF;
         rF.k = k;
         rF.n = n;
-        rF.overlapSketchThreshold = overlapSketchThreshold;
+        rF.l = l;
+        rF.max_occ = max_occ;
         rF.tempDir = tempDir;
         {
             auto start = std::chrono::high_resolution_clock::now();
@@ -112,13 +113,13 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
         std::cout << "bsc/lzma2 compression starts" << std::endl;
         std::set<std::string> extensions;
         DirectoryUtils::getAllExtensions(tempDir, std::inserter(extensions, extensions.end()));
-        for (const std::string &ext : extensions) {
+        for (const std::string &ext: extensions) {
             std::vector<size_t> uncompressedSizes(numThr);
             std::vector<size_t> compressedSizes(numThr);
 #pragma omp parallel num_threads(numThr)
 #pragma omp for
             for (int i = 0; i < numThr; i++) {
-                std::string fullPath = tempDir + tempFileName + ".tid."+ std::to_string(i) + ext;
+                std::string fullPath = tempDir + tempFileName + ".tid." + std::to_string(i) + ext;
                 std::string outPath = fullPath + "Compressed";
                 // use lzma2 for .base to get better compression
                 if (ext == std::string(".base"))
@@ -135,7 +136,8 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
                 totalCompressed += compressedSizes[i];
             }
             total_compressed_size += totalCompressed;
-            std::cout << "Extension " << ext << ": Compressed " << totalUncompressed << " bytes to " << totalCompressed << " bytes\n";
+            std::cout << "Extension " << ext << ": Compressed " << totalUncompressed << " bytes to " << totalCompressed
+                      << " bytes\n";
         }
         std::cout << "Total compressed size of all streams is " << total_compressed_size << " bytes\n";
     }
@@ -156,3 +158,4 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
             throw std::runtime_error("Error occurred during ls command.");
     }
 
+}
