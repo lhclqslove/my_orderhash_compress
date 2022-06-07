@@ -9,4 +9,5 @@ typedef uint32_t read_t;
  which is definitely sufficient **/
 typedef uint64_t kMer_t;
 
+
 #endif // TYPES_H_

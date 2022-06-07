@@ -143,6 +143,17 @@ add_library(springlib
         src/BBHashMap.cpp
         include/BooPHF.h
         include/xxhash.hpp
+        include/SafeQueue.h
+        include/ThreadPool.h
+        include/Consensus.h
+        src/Consensus.cpp
+        include/ConsensusGraph.h
+        src/ConsensusGraph.cpp
+        include/bsc_helper.h
+        src/bsc.cpp
+        include/lzma2_helper.h
+        src/lzma2.cpp
+        include/OmpMutex.h
         )
 target_include_directories(springlib
         PUBLIC include src

@@ -72,8 +72,12 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
             break;
         numReadsCurrBlock = 0;
     }
+    index=numReads;//初始化位序列数，原始序列的小标为[0,numread-1]
+    sequence_number_threshold=numReads/10;
+
     assert(numReads != 0);
     avgReadLen = totalNumBases / numReads;
+
     std::cout << "numReads " << numReads << std::endl;
     std::cout << "avgReadLen " << avgReadLen << std::endl;
     std::cout << "maxReadLen " << maxReadLen << std::endl;

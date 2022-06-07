@@ -15,11 +15,12 @@ class ReadData
         enum Filetype { FASTQ, READ, GZIP};
         /** The average length of the reads **/
         size_t avgReadLen;
-
+        static std::atomic<read_t> index;//用于给新合并的序列创建id
         /** The length of the longest read **/
         size_t maxReadLen;
         std::string tempDir;
         size_t que_cnt;//查询挽回次数
+        static size_t sequence_number_threshold;//序列数阈值，当数据集的序列数小于阈值时不在合并，设置为原有序列10%
         /// 加载序列文件存入DNAbitset
         /// \param filename
         /// \param filetype
@@ -67,6 +68,8 @@ class ReadData
                                         Inserter reverseComplement);
         /* Destructor to delete bitset file when applicable */
     private:
+
+
         read_t numReads;
         /*存储序列文件到内存中*/
         std::vector<std::unique_ptr<Read>>readData;

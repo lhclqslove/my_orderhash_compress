@@ -10,8 +10,11 @@
 #include <unistd.h>
 #include <string>
 #include <omp.h>
+#include "bsc_helper.h"
+#include "lzma2_helper.h"
 #include "DirectoryUtils.h"
 #include "ReadFilter.h"
+#include "Consensus.h"
 #ifdef USE_MALLOC_TRIM
     #include <malloc.h>
 #endif
@@ -45,12 +48,19 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
     std::cout << "number of threads: " << numThr << std::endl;
     double vm_usage, resident_set;
     std::cout << "Entering compress():\n";
-//    if (low_mem) {
-//        std::cout << "Using low memory compression mode.\n";
-//    }
-    mem_usage(vm_usage, resident_set);
-    omp_set_num_threads(numThr);
+    //单独拿出一个线程，构建的线程池，为每轮生成的编辑脚本，进行通用压缩，
+    ThreadPool my_ThreadPool(1);
+    if(numThr<=1)
     {
+        throw std::runtime_error(
+                "The number of threads must be greater than one");
+    }
+    size_t loop_index=0;
+    mem_usage(vm_usage, resident_set);
+
+    omp_set_num_threads(numThr-1);
+    {
+        //先读入文件，加载到数据类中
         ReadData rD;
         rD.tempDir = tempDir;
         auto read_start = std::chrono::high_resolution_clock::now();
@@ -62,44 +72,50 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
                   << " milliseconds" << std::endl;
         std::cout << "After rD.loadFromFile():\n";
         mem_usage(vm_usage, resident_set);
-
-        OrderHashReadFilter rF;
-        rF.k = k;
-        rF.n = n;
-        rF.l = l;
-        rF.max_occ = max_occ;
-        rF.tempDir = tempDir;
+        while(rD.getNumReads()>ReadData::sequence_number_threshold)
         {
-            auto start = std::chrono::high_resolution_clock::now();
-            rF.initialize(rD);
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Calculating MinHashes took " << duration.count()
-                      << " milliseconds" << std::endl;
-        }
-        std::cout << "After minhash computation:\n";
-        mem_usage(vm_usage, resident_set);
+                OrderHashReadFilter rF;
+                rF.k = k;
+                rF.n = n;
+                rF.l = l;
+                rF.max_occ = max_occ;
+                rF.tempDir = tempDir;
+                {
+                    auto start = std::chrono::high_resolution_clock::now();
+                    rF.initialize(rD);
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto duration =
+                            std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                    std::cout<<"loop_index"<<loop_index << "Calculating orderHashes took " << duration.count()
+                              << " millis"
+                                 ""
+                                 "econds" << std::endl;
+                }
+                std::cout <<"loop_index"<<loop_index<< "After orderhash computation:\n";
+                mem_usage(vm_usage, resident_set);
 
-#ifdef USE_MALLOC_TRIM
-        malloc_trim(0); // clear memory
-#endif
+    #ifdef USE_MALLOC_TRIM
+                malloc_trim(0); // clear memory
+    #endif
 
-        Consensus consensus;
-        {
-            consensus.rD = &rD;
-            consensus.rF = &rF;
-            consensus.rA = rA;
-            consensus.tempDir = tempDir;
-            consensus.tempFileName = tempFileName;
-            consensus.numThr = numThr;
-            //parameters for minimap2
-            consensus.m_k = m_k;
-            consensus.m_w = m_w;
-            consensus.max_chain_iter = max_chain_iter;
-            consensus.edge_threshold = edge_threshold;
-            consensus.generateAndWriteConsensus();
+                Consensus consensus;
+                {
+                    consensus.rD = &rD;
+                    consensus.rF = &rF;
+                    consensus.k= k;
+                    consensus.tempDir = tempDir;
+                    consensus.tempFileName = tempFileName;
+                    consensus.numThr = numThr-1;
+                    //parameters for minimap2
+                    consensus.m_k = m_k;
+                    consensus.m_w = m_w;
+                    consensus.max_chain_iter = max_chain_iter;
+                    consensus.edge_threshold = edge_threshold;
+                    consensus.generateAndWriteConsensus();
+                }
+                //使用通用压缩工具压缩这一轮的编辑脚本
         }
+
     }
 
 #ifdef USE_MALLOC_TRIM

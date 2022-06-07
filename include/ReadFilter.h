@@ -58,6 +58,7 @@ public:
     size_t n;
     size_t l;
     static size_t max_occ;
+    static size_t que_cnt;
     std::string tempDir;
 
     /**

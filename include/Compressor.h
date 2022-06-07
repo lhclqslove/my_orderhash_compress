@@ -7,7 +7,7 @@
 
 #include <iostream>
 #include "ReadData.h"
-
+#include "ThreadPool.h"
 
 class Compressor {
 public:
@@ -15,7 +15,7 @@ public:
     size_t k, n,l, m_k, max_occ,m_w, max_chain_iter, edge_threshold;
     ReadData::Filetype filetype = ReadData::Filetype::READ;
 //    ReadAligner *rA;
-
+//    size_t loop_index;
     std::string tempDir;
     /** The temp directories **/
     // std::string tempDir = "tempRaw/";
