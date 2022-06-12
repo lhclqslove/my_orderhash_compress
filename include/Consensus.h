@@ -36,6 +36,17 @@ struct CountStats {
     }
 };
 
+struct match_info
+{
+    read_t vid;//在rD类中下标id
+    read_t id;//序列的唯一id
+    std::vector<Edit> editScript;
+    ssize_t beginOffset, endOffset;
+    ssize_t pos;
+    bool reverseComplement;
+    size_t match_length;
+};
+
 class Consensus {
 public:
     ReadData *rD;
@@ -134,7 +145,12 @@ private:
      */
     void addRelatedReads(ConsensusGraph *cG, ssize_t curPos, int len, CountStats &cs, std::ofstream &logfile, int contigId);
 
-    void addRelatedReads(ConsensusGraph *cG);
+    /***
+     * @brief 给cG的主链，找寻相似序列进行合并。
+     * @param cG
+     * @return 如果能找到就是true,否则FALSE
+     */
+    bool addRelatedReads(ConsensusGraph *cG);
     /**
      * @brief Create consensus graph by picking previously unadded read
      *

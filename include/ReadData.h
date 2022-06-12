@@ -50,6 +50,14 @@ class ReadData
         * @return none
         */
         void getRead(read_t readId, std::string &readStr);
+        /***
+         * @brief 以智能指针的形式获取my_read::Read对象。
+         * @param readId
+         * @param ptr
+         */
+        void getRead(read_t readId,std::shared_ptr<my_read::Read> &ptr);
+
+        void getindex(read_t readId,read_t &index);
         /**
          * @brief Turns a DNA strand to its reverse complement.
          *
@@ -72,7 +80,7 @@ class ReadData
 
         read_t numReads;
         /*存储序列文件到内存中*/
-        std::vector<std::unique_ptr<Read>>readData;
+        std::vector<std::shared_ptr<Read>> readData;
         void loadFromFastqFile(const char *fileName,bool gzip_flag);
 
 };

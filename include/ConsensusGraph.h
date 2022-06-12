@@ -121,6 +121,8 @@ public:
      */
     Edge(Node *source, Node *sink, read_t read);
 
+    Edge(Node *source, Node *sink, read_t read,read_t w);
+
     /**
      * Initializes the Edge from a source, a sink, and a vector of sorted read.
      * @param source
@@ -133,8 +135,16 @@ public:
      * Adds a read to the edge. Basically just increases count by 1 and add read
      * to the internal vector (while maintaining sorting).
      * @param read
+     *
      */
     void addRead(read_t read);
+    /**
+     * Adds a read to the edge. Basically just increases count by 1 and add read
+     * to the internal vector (while maintaining sorting).
+     * @param read
+     * @param w
+     */
+    void addRead(read_t read,size_t w);
 };
 
 /**
@@ -236,7 +246,7 @@ public:
      * @param pos Relative position in contig
      */
     void initialize(const std::string &seed, read_t readId, long pos);
-
+    void initialize(const std::shared_ptr<my_read::Read> &read,long pos);
     /**
      * Aligns a string to the consensus graph mainPath. 
      * Does not update mainPath or list of reads.
@@ -244,7 +254,7 @@ public:
      */
     __attribute__((warn_unused_result)) bool
     alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset, size_t m_k, size_t m_w, size_t max_chain_iter);
+            ssize_t &beginOffset, ssize_t &endOffset,size_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter);
 
     /**
      * @brief Updates the graph with the new read s, and the alignment results
@@ -266,6 +276,9 @@ public:
                      ssize_t beginOffset, ssize_t endOffset, read_t readId,
                      long pos, bool reverseComplement);
 
+    void updateGraph(std::shared_ptr<my_read::Read> &read, std::vector<Edit> &editScript,
+                     ssize_t beginOffset, ssize_t endOffset, read_t readId,
+                     long pos, bool reverseComplement);
     /**
      * Clears the old mainPath, calculates the new mainPath and adds it.
      * Uses dynamic programming.
@@ -379,7 +392,7 @@ private:
     Node *createNode(char base);
 
     Edge *createEdge(Node *source, Node *sink, read_t read);
-
+    Edge *createEdge(Node *source, Node *sink, read_t read,read_t w);
     Edge *createEdge(Node *source, Node *sink, std::vector<read_t> &reads);
 
     // reads must be a sorted vector

@@ -15,7 +15,11 @@ Edge::Edge(Node *source, Node *sink, read_t read) : source(source), sink(sink) {
     // insert into sorted vector
     reads.push_back(read);
 }
-
+Edge::Edge(Node *source, Node *sink, read_t read,read_t w) : source(source), sink(sink) {
+    count = w;
+    // insert into sorted vector
+    reads.push_back(read);
+}
 Edge::Edge(Node *source, Node *sink, std::vector<read_t> &reads)
     : source(source), sink(sink), reads(reads) {
     count = reads.size();
@@ -26,10 +30,15 @@ void Edge::addRead(read_t read) {
     // insert into sorted vector
     reads.insert(std::lower_bound(reads.begin(), reads.end(), read), read);
 }
+void Edge::addRead(read_t read,size_t w) {
+    count+=w;
+    // insert into sorted vector
+    reads.insert(std::lower_bound(reads.begin(), reads.end(), read), read);
+}
 
 Node::Node(const char base) : base(base) {}
 
-
+//找回主链的边
 Edge *Node::getEdgeTo(Node *n) {
     const auto &it = std::find_if(
         edgesOut.begin(), edgesOut.end(),
@@ -158,8 +167,34 @@ void ConsensusGraph::initialize(const std::string &seed, read_t readId,
     // Rest will be inserted later when calculateMainPathGreedy is called
 }
 
+void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long pos) {
+    // pos is zero here
+    std::string  seed;
+    read->read->to_string(seed);
+    size_t len = seed.length();
+    Node *currentNode = createNode(seed[0]);
+    // We create a read that points to this node
+    readsInGraph.insert(std::make_pair(
+            read->id, ConsensusGraph::Read(pos, currentNode, seed.length(), false)));
+    rightMostUnchangedNode = currentNode;
+    rightMostUnchangedNodeOffset = 0;
+    leftMostUnchangedNode = currentNode;
+    leftMostUnchangedNodeOffset = 0;
+    mainPath.path.push_back(currentNode->base);
+    currentNode->onMainPath = true;
+    currentNode->cumulativeWeight = 0;
+    for (size_t i = 1; i < len; ++i) {
+        Node *nextNode = createNode(seed[i]);
+        createEdge(currentNode, nextNode, read->id,read->w[i-1]);
+        currentNode = nextNode;
+    }
+    startPos = pos; // = 0
+    endPos = pos + 1;
+    // endPos is set to pos+1=1 here because we only inserted one base to mainPath
+    // Rest will be inserted later when calculateMainPathGreedy is called
+}
 bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset, size_t m_k, size_t m_w, size_t max_chain_iter) {
+            ssize_t &beginOffset, ssize_t &endOffset,size_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter) {
     // General comments: 
     // 1. The whole idea behind startPos, endPos and Read.pos in ConsensusGraph
     //    is to provide a reference point for the main path when looking for the next 
@@ -184,7 +219,7 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
 
     // TODO: can we remove the Read.pos, startPos, endPos variables in the minimap case 
     //       to help simplify things significantly?
-
+    match_length=0;
     size_t editDis;
 
     const char* Abegin = originalString.c_str();
@@ -236,6 +271,7 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
     	editDis = r->blen - r->mlen + r->p->n_ambi;
     	//calculate the aligned length; notice that I use the aligned length for the query read here
     	alignedLen = r->qe - r->qs;
+        match_length=alignedLen;
     	//first check if the read is at the beginnning or the end of reference sequence
         if((r->rs > 0) && (r->re < (ssize_t)originalString.size())){
     		//check editDis/alignedLen
@@ -402,7 +438,6 @@ void ConsensusGraph::updateGraph(const std::string &s,
                                  ssize_t beginOffset, ssize_t endOffset,
                                  read_t readId, long pos,
                                  bool reverseComplement) {
-
     // How does the updateGraph function work (high level)?
     // 1. If beginOffset is -ve, create |beginOffset| new nodes in the graph 
     //    joined in a chain representing those bases in read 
@@ -504,6 +539,7 @@ void ConsensusGraph::updateGraph(const std::string &s,
         }
     };
 
+
     // Now we deal with the edits one by one
     for (const Edit &e : editScript) {
         if (e.editType == SAME) {
@@ -555,6 +591,165 @@ void ConsensusGraph::updateGraph(const std::string &s,
     readsInGraph.insert(std::make_pair(
         readId, Read(pos, initialNode, s.length(), reverseComplement)));
 }
+void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vector<Edit> &editScript, ssize_t beginOffset,
+                                 ssize_t endOffset, read_t readId, long pos, bool reverseComplement) {
+    // How does the updateGraph function work (high level)?
+    // 1. If beginOffset is -ve, create |beginOffset| new nodes in the graph
+    //    joined in a chain representing those bases in read
+    //    (the chain will be essentially joined to position 0 of mainPath in graph).
+    // 2. Then begin adding nodes & edges to graph according to the editScript
+    //    at the relevant place in the graph as determined by beginOffset
+    //    (essentially starting at position 0 of mainPath when beginOffset is -ve)
+    // 3. Finally, if endOffset is +ve, create |endOffset| new nodes in the graph
+    //    joined in a chain representing those bases in read (the chain begins
+    //    in the graph where step 2 ends, which will be roughly the end of mainPath
+    //    in this case).
+    std::string  s;
+    read->read->to_string(s);
+    const auto &edgeInPathEnd = mainPath.edges.end();
+    auto edgeInPath = mainPath.edges.begin();
+    /** nodeInPath should always be set to edgeInPath.source, unless it is the
+    last node, in which case edgeInPath should be edgeInPathEnd **/
+    Node *nodeInPath = (*edgeInPath)->source;
+    /** The last node of this read that has been added **/
+    Node *currentNode = nullptr;
+    Node *initialNode = nullptr;
+    size_t qpos=0;
+    size_t numUnchanged = 0;
+
+    // First we update leftMostUnchangedNode and rightMostUnchangedNode
+    if (beginOffset >= 0 || endOffset >= 0) {
+        rightMostUnchangedNodeOffset = static_cast<size_t>(std::max(
+                static_cast<ssize_t>(leftMostUnchangedNodeOffset),
+                std::min(static_cast<ssize_t>(rightMostUnchangedNodeOffset),
+                         beginOffset)));
+        if (rightMostUnchangedNodeOffset > 0)
+            rightMostUnchangedNode =
+                    mainPath.edges[rightMostUnchangedNodeOffset - 1]->sink;
+        else
+            rightMostUnchangedNode = mainPath.edges[0]->source;
+    } else {
+        leftMostUnchangedNodeOffset =
+                std::min(rightMostUnchangedNodeOffset,
+                         std::max(leftMostUnchangedNodeOffset,
+                                  mainPath.path.size() - 1 + endOffset));
+        if (leftMostUnchangedNodeOffset > 0)
+            leftMostUnchangedNode =
+                    mainPath.edges[leftMostUnchangedNodeOffset - 1]->sink;
+        else
+            leftMostUnchangedNode = mainPath.edges[0]->source;
+    }
+
+    auto advanceNodeInPath = [&]() {
+        if (edgeInPath == edgeInPathEnd)
+            return;
+        nodeInPath = (*edgeInPath)->sink;
+        edgeInPath++;
+    };
+
+    // First we deal with beginOffset
+    auto initialAdvance = [&] {
+        //        std::cout << "initialAdvance" << std::endl;
+        if (beginOffset >= 1) {
+            // We need to advance in the mainPath
+            // for (size_t i = 0; i < beginOffset; i++) {
+            //     advanceNodeInPath();
+            // }
+            edgeInPath += beginOffset - 1;
+            nodeInPath = (*edgeInPath)->sink;
+            edgeInPath++;
+
+        } else if (beginOffset <= -1) {
+            // We need to insert the initial parts of the read
+            // This number must be positive
+            size_t numOfNodes2Insert = -beginOffset;
+            // std::cout << numOfNodes2Insert << " ";
+            size_t i = 0;
+            // We create an initial node
+            currentNode = createNode(s[i++]);
+            initialNode = currentNode;
+            qpos++;
+            for (; i < numOfNodes2Insert; ++i) {
+                Node *nextNode = createNode(s[i]);
+                createEdge(currentNode, nextNode,  read->id,read->w[i-1]);
+                currentNode = nextNode;
+            }
+        }
+    };
+
+    initialAdvance();
+
+    auto insertNode = [&](char base) {
+        if (!currentNode) {
+            // If there is no currentNode, we create one
+            currentNode = createNode(base);
+            initialNode = currentNode;
+
+        } else {
+            Edge *edge = currentNode->getEdgeToSide(base);
+            if (edge) {
+                edge->addRead(readId,read->w[qpos-1]);
+            } else {
+                Node *n = createNode(base);
+                edge =  createEdge(currentNode, n,  read->id,read->w[qpos-1]);
+            }
+            qpos++;
+            currentNode = edge->sink;
+        }
+    };
+
+    // Now we deal with the edits one by one
+    for (const Edit &e : editScript) {
+        if (e.editType == SAME) {
+            size_t num = e.editInfo.num;
+            numUnchanged += num;
+            // We deal with the first node
+            if (!currentNode) {
+                // If there is no currentNode, set it and initialNode
+                initialNode = nodeInPath;
+                currentNode = nodeInPath;
+            } else {
+                // Otherwise create an edge from the currentNode to nodeInPath
+                Edge *edge = currentNode->getEdgeTo(nodeInPath);
+                if (edge) {
+                    // If there is already an edge to it
+                    edge->addRead(readId,read->w[qpos-1]);
+                } else {
+                    // Otherwise create an edge
+                    edge = createEdge(currentNode, nodeInPath, readId,read->w[qpos-1]);
+                }
+                currentNode = nodeInPath;
+            }
+            advanceNodeInPath();
+            qpos++;
+            // We deal with the rest of the nodes
+            for (size_t i = 1; i < num; ++i) {
+                currentNode->getEdgeTo(nodeInPath)->addRead(readId,read->w[qpos]);
+                currentNode = nodeInPath;
+                advanceNodeInPath();
+                qpos++;
+            }
+        } else if (e.editType == DELETE) {
+            // Deletion just means advancing the node in path
+            advanceNodeInPath();
+        } else if (e.editType == INSERT) {
+            char base = e.editInfo.ins;
+            insertNode(base);
+        }
+    }
+
+    // Finally we deal with endOffset
+    if (endOffset > 0) {
+        auto end = s.end();
+        for (auto it = end - endOffset; it < end; it++) {
+            insertNode(*it);
+        }
+    }
+    assert(numUnchanged > 0);
+    // Don't forget to add the read!
+    readsInGraph.insert(std::make_pair(
+            readId, Read(pos, initialNode, s.length(), reverseComplement)));
+}
 
 Path &ConsensusGraph::calculateMainPathGreedy() {
     clearMainPath();
@@ -594,6 +789,8 @@ Path &ConsensusGraph::calculateMainPathGreedy() {
         while ((edgeToAdd = currentNode->getBestEdgeIn())) {
             edgesInPath.insert(edgesInPath.begin(), edgeToAdd);
             currentNode = edgeToAdd->source;
+
+
             currentNode->onMainPath = true;
             stringPath.insert(stringPath.begin(), currentNode->base);
             leftMostUnchangedNodeOffset++;
@@ -835,7 +1032,13 @@ Edge *ConsensusGraph::createEdge(Node *source, Node *sink, read_t read) {
     numEdges++;
     return e;
 }
-
+Edge *ConsensusGraph::createEdge(Node *source, Node *sink, read_t read,read_t w) {
+    Edge *e = new Edge(source, sink, read,w);
+    source->edgesOut.push_back(e);
+    sink->edgesIn.push_back(e);
+    numEdges++;
+    return e;
+}
 Edge *ConsensusGraph::createEdge(Node *source, Node *sink,
                                  std::vector<read_t> &reads) {
     Edge *e = new Edge(source, sink, reads);

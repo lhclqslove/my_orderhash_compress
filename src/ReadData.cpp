@@ -63,7 +63,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
         readData.resize(numReadsInserted + numReadsCurrBlock);
 #pragma omp parallel for
         for (size_t i = 0; i < numReadsCurrBlock; i++) {
-            std::unique_ptr<Read> ptr(new Read(
+            std::shared_ptr<my_read::Read> ptr(new my_read::Read(
                     lines[i],numReadsInserted+i,que_cnt));
             readData[numReadsInserted+i] = std::move(ptr);
         }
@@ -94,4 +94,10 @@ read_t ReadData::getNumReads() {
 void ReadData::getRead(read_t readId, std::string &readStr) {
     readData[readId]->read->to_string(readStr);
     return;
+}
+void ReadData::getRead(read_t readId, std::shared_ptr<my_read::Read> &ptr) {
+    ptr= std::shared_ptr<my_read::Read>(readData[readId]);
+}
+void ReadData::getindex(read_t readId, read_t &index) {
+    index=readData[readId]->id;
 }
