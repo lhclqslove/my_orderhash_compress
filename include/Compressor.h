@@ -12,7 +12,7 @@
 class Compressor {
 public:
     /** Parameters for filtering **/
-    size_t k, n,l, m_k, max_occ,m_w, max_chain_iter, edge_threshold;
+    size_t k, n,l, m_k, max_occ,m_w, max_chain_iter, edge_threshold,que_cnt;
     ReadData::Filetype filetype = ReadData::Filetype::READ;
 //    ReadAligner *rA;
 //    size_t loop_index;

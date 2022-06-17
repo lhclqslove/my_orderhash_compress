@@ -5,6 +5,8 @@
 #include <boost/program_options.hpp>
 #include "DirectoryUtils.h"
 #include <omp.h>
+#include <Compressor.h>
+
 using namespace std::chrono;
 using namespace std;
 
@@ -48,7 +50,7 @@ int main(int argc, char **argv) {
             "num_kmer,l",po::value<size_t>(&l)->default_value(2),"orderhash number kmer for per hashval")(
             "num-hash,n", po::value<size_t>(&n)->default_value(60),
             "number of hash functions for orderhash (default 60)")(
-            "num-read", po::value<size_t>(&que_cnt)->default_value(3),
+            "que_cnt", po::value<size_t>(&que_cnt)->default_value(3),
             "number of read cnt  for every query (default 3)")(
             "max_occ",po::value<size_t>(&max_occ)->default_value(3),"orderhash only sensitive for kmer with occ<maxocc"
                     )(
@@ -97,5 +99,68 @@ int main(int argc, char **argv) {
     std::cout << "Temporary directory: " << temp_dir << "\n";
     temp_dir_global = temp_dir;
     temp_dir_flag_global = true;
+    try{
+        if (compress_flag){
+            if (k == 0)
+                throw std::runtime_error("Invalid k");
+            std::cout << "k n  num_kmer que_cnt max_occ minimap:k minimap:w minimap:max_chain_iter edge_threshold\n"
+                      << k << " " << n << " " <<l << " "<<max_occ<<" "<<que_cnt<<" "
+                      << m_k << " " << m_w << " " << max_chain_iter <<" " << edge_threshold<< std::endl;
+//            MergeSortReadAligner rA(21, 10);
+            Compressor compressor;
+            compressor.k = k;
+            compressor.n = n;
+            compressor.l=l;
+            compressor.max_occ=max_occ;
+//            compressor.overlapSketchThreshold = overlapSketchThreshold;
+            compressor.m_k = m_k;
+            compressor.m_w = m_w;
+            compressor.max_chain_iter = max_chain_iter;
+            compressor.edge_threshold = edge_threshold;
+//            compressor.rA = &rA;
+            compressor.tempDir = temp_dir;
+            compressor.outputFileName = outfile;
+//            compressor.low_mem = low_mem;
+            const std::string filename(infile);
+            const std::string extension =
+                    filename.substr(filename.find_last_of('.') + 1);
+            if (!extension.compare("gz"))
+                compressor.filetype = ReadData::Filetype::GZIP;
+            else if (!extension.compare("fastq"))
+                compressor.filetype = ReadData::Filetype::FASTQ;
+            compressor.compress(infile.c_str(), num_thr);
+
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<seconds>(stop - start);
+            cout << "Time taken by function: "<< duration.count() << " seconds" << endl;
+        }
+        else{
+//            Decompressor dc;
+//            dc.tempDir = temp_dir;
+//            if (decompression_memory_gb < 1) {
+//                throw std::runtime_error("Invalid decompression-memory parameter: must be >= 1.");
+//            }
+//            dc.decompress(infile.c_str(), outfile.c_str(), num_thr, decompression_memory_gb);
+        }
+    }
+        // Error handling
+    catch (std::runtime_error& e) {
+        std::cout << "Program terminated unexpectedly with error: " << e.what()
+                  << "\n";
+        std::cout << "Deleting temporary directory...\n";
+        boost::filesystem::remove_all(temp_dir);
+        temp_dir_flag_global = false;
+        std::cout << desc << "\n";
+        return 1;
+    } catch (...) {
+        std::cout << "Program terminated unexpectedly\n";
+        std::cout << "Deleting temporary directory...\n";
+        boost::filesystem::remove_all(temp_dir);
+        temp_dir_flag_global = false;
+        std::cout << desc << "\n";
+        return 1;
+    }
+    boost::filesystem::remove_all(temp_dir);
+    temp_dir_flag_global = false;
     return 0;
 }

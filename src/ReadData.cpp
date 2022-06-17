@@ -20,9 +20,12 @@ void ReadData::loadFromFile(const char *filename, enum Filetype filetype) {
 
     }
 }
+ReadData::ReadData() {
+    readData=std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>(new std::vector<std::shared_ptr<my_read::Read>>());
+}
 void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
     numReads=0;
-    readData.clear();
+    readData->clear();
     std::ifstream infile;
     boost::iostreams::filtering_streambuf<boost::iostreams::input> *inbuf;
     std::istream *fin = &infile;
@@ -60,20 +63,20 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
             if (numReadsCurrBlock == numReadsPerBlock)
                 break;
         }
-        readData.resize(numReadsInserted + numReadsCurrBlock);
+        readData->resize(numReadsInserted + numReadsCurrBlock);
 #pragma omp parallel for
         for (size_t i = 0; i < numReadsCurrBlock; i++) {
             std::shared_ptr<my_read::Read> ptr(new my_read::Read(
                     lines[i],numReadsInserted+i,que_cnt));
-            readData[numReadsInserted+i] = std::move(ptr);
+            (*readData)[numReadsInserted+i] = std::move(ptr);
         }
         numReadsInserted += numReadsCurrBlock;
         if (numReadsCurrBlock < numReadsPerBlock)
             break;
         numReadsCurrBlock = 0;
     }
-    index=numReads;//初始化位序列数，原始序列的小标为[0,numread-1]
-    sequence_number_threshold=numReads/10;
+    index=numReads;//初始化位序列数，原始序列的下标为[0,numread-1]
+    sequence_number_threshold=numReads/10;//序列数限制
 
     assert(numReads != 0);
     avgReadLen = totalNumBases / numReads;
@@ -92,12 +95,16 @@ read_t ReadData::getNumReads() {
     return numReads;
 }
 void ReadData::getRead(read_t readId, std::string &readStr) {
-    readData[readId]->read->to_string(readStr);
+    (*readData)[readId]->read->to_string(readStr);
     return;
 }
 void ReadData::getRead(read_t readId, std::shared_ptr<my_read::Read> &ptr) {
-    ptr= std::shared_ptr<my_read::Read>(readData[readId]);
+    ptr= std::shared_ptr<my_read::Read>((*readData)[readId]);
 }
 void ReadData::getindex(read_t readId, read_t &index) {
-    index=readData[readId]->id;
+    index=(*readData)[readId]->id;
+}
+void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads) {
+    readData=reads;
+    numReads=reads->size();
 }

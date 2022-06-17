@@ -126,6 +126,8 @@ void Path::clear() {
 
 ConsensusGraphWriter::ConsensusGraphWriter(const std::string &filePrefix) {
     const std::string posFileName = filePrefix + ".pos";
+    const std::string ref_id=filePrefix+".refid";
+//    const std::string read_id=filePrefix+".readid";
     const std::string editTypeFileName = filePrefix + ".type";
     const std::string editBaseFileName = filePrefix + ".base";
     const std::string idFileName = filePrefix + ".id";
@@ -133,11 +135,12 @@ ConsensusGraphWriter::ConsensusGraphWriter(const std::string &filePrefix) {
     const std::string genomeFileName = filePrefix + ".genome";
     const std::string loneFileName = filePrefix + ".lone";
     posFile.open(posFileName, std::ios::binary);
+    refidFile.open(ref_id,std::ios::binary);
+//    readidFile.open(read_id,std::ios::binary);
     editTypeFile.open(editTypeFileName);
     editBaseFile.open(editBaseFileName);
     idFile.open(idFileName, std::ios::binary);
-    complementFile.open(complementFileName);
-    genomeFile.open(genomeFileName);
+//    genomeFile.open(genomeFileName);
     loneFile.open(loneFileName);
 }
 
@@ -166,7 +169,21 @@ void ConsensusGraph::initialize(const std::string &seed, read_t readId,
     // endPos is set to pos+1=1 here because we only inserted one base to mainPath
     // Rest will be inserted later when calculateMainPathGreedy is called
 }
-
+std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread()
+{
+    //原子操作获取新id
+    size_t newindex=ReadData::index++;
+    if (newindex == std::numeric_limits<read_t>::max())
+        throw std::runtime_error(
+                "Too many reads for read_t type to handle.");
+    std::shared_ptr<my_read::Read> ptr(new my_read::Read(newindex));
+    //沿着走一遍获取base和weight
+    ptr->read=std::unique_ptr<DnaBitset>(new DnaBitset(mainPath.path.c_str(),mainPath.path.size()));
+    for (auto e : mainPath.edges) {
+        ptr->w.push_back(e->count);
+    }
+    return  ptr;
+}
 void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long pos) {
     // pos is zero here
     std::string  seed;
@@ -1179,10 +1196,10 @@ void ConsensusGraph::removeEdge(Edge *e,
                       << " " << stat / (1 - 0.17 * 1.1) << " " << std::endl;
         }
 
-        void ConsensusGraph::writeMainPath(ConsensusGraphWriter &cgw) {
-            cgw.genomeFile << std::string(mainPath.path.begin(), mainPath.path.end())
-              << std::endl;
-        }
+//        void ConsensusGraph::writeMainPath(ConsensusGraphWriter &cgw) {
+//            cgw.genomeFile << std::string(mainPath.path.begin(), mainPath.path.end())
+//              << std::endl;
+//        }
 
         void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw) {
             // First we write the index of each character into the
@@ -1213,9 +1230,43 @@ void ConsensusGraph::removeEdge(Edge *e,
             printStatus();
 #endif
         }
+        void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw,const read_t ref_id){
+            // First we write the index of each character into the
+            // cumulativeWeight field of the nodes on mainPath
+            mainPath.edges.front()->source->cumulativeWeight = 0;
+            size_t i = 0;
+            for (auto e : mainPath.edges) {
+                e->sink->cumulativeWeight = ++i;
+            }
+            size_t totalEditDis = 0;
+
+            read_t pasId = 0;
+            for (auto it : readsInGraph) {
+                {
+                    read_t diffId = it.first - pasId;
+                    cgw.idFile.write((char*)&diffId, std::ios::binary);
+                    cgw.complementFile << (it.second.reverseComplement ? 'c' : 'n');
+                    DirectoryUtils::write_var_uint32(ref_id, cgw.refidFile);
+                    pasId = it.first;
+                }
+                totalEditDis += writeRead(cgw.posFile, cgw.editTypeFile, cgw.editBaseFile,
+                                          it.second, it.first);
+            }
+            cgw.complementFile << '\n';
+#ifdef LOG
+            std::cout << "AvgEditDis "
+                      << totalEditDis / (double)readsInGraph.size()
+                      << std::endl;
+            printStatus();
+#endif
+        }
 
         void ConsensusGraph::writeReadLone(ConsensusGraphWriter &cgw) {
             cgw.loneFile << std::string(mainPath.path.begin(), mainPath.path.end()) << std::endl;
+        }
+        void ConsensusGraph::writeReadlone(ConsensusGraphWriter &cgw,const read_t readid){
+            cgw.loneFile<<std::to_string(readid)<<std::endl;
+            cgw.loneFile<<std::string(mainPath.path.begin(), mainPath.path.end())<<std::endl;
         }
 
         void ConsensusGraph::writeIdsLone(ConsensusGraphWriter &cgw, std::vector<read_t> &loneReads) {

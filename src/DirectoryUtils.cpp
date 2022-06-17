@@ -17,7 +17,7 @@ namespace DirectoryUtils {
         } while(byte & 0x80);
         return val;
     }
-
+    //每次都7位写出
     void write_var_uint32(const uint32_t val, std::ofstream &fout){
         uint32_t uval = val;
         uint8_t byte;
@@ -102,6 +102,7 @@ namespace DirectoryUtils {
         boost::filesystem::path path(filepath);
         unpack(filepath, path.parent_path().string());
     }
+
 
 } // namespace DirectoryUtils
 

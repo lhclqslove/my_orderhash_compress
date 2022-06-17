@@ -21,10 +21,11 @@
 void Consensus::generateAndWriteConsensus(size_t loopindex) {
     if(loopindex==0)initialize();//只在第一轮判断是否是重复的
     else isRepetitive.resize(numReads, false);
-
     std::vector<std::vector<read_t>> numReadsInContig(numThr);
     std::vector<std::vector<read_t>> loneReads(numThr);
     std::vector<std::vector<std::string>>contig(numThr);
+    //用来保存每个线程的的合并序列
+    std::vector<std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>>reads(numThr);
     ConsensusGraph *cG = nullptr;
     std::vector<CountStats> count_stats(numThr);
 
@@ -35,7 +36,7 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
 #ifdef LOG
         logfile.open("logfile"+std::to_string(tid), std::ofstream::out);
 #endif
-        std::string filePrefix = tempDir + tempFileName+"loop"+ std::to_string(loopindex) + ".tid." + std::to_string(tid);
+        std::string filePrefix = tempDir + tempFileName+".loop."+ std::to_string(loopindex) + ".tid." + std::to_string(tid);
         ConsensusGraphWriter cgw(filePrefix);
         read_t firstUnaddedRead = 0;
         int contigId = 0;
@@ -45,29 +46,28 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
             if (addRelatedReads(cG))//如果合并成功
             {
                 //形成新的序列放入线程的vector
-
+                reads[tid]->emplace_back(std::move(cG->get_mainpathread()));
                 //给图中的两条序列，构造编辑脚本写入文件夹
-            } else//合并不成功
-            {
-                /*判断剩余的挽回次数
-                 * 不为0直接转发，下一层
-                 *为0直接写入孤立文件夹
-                */
+                cG->writeReads(cgw,reads[tid]->back()->id);
 
             }
-
-
-
-            // if the graph has just one read, write to lone
-            if (cG->getNumReads() == 0) {
-                cG->writeReadLone(cgw);
-                loneReads[tid].push_back(cG->firstReadId);
-                numReadsInContig[tid].push_back(1);
-            } else {
-                cG->writeMainPath(cgw);
-                cG->writeReads(cgw);
-                contig[tid].push_back(cG->mainPath.path);
-                numReadsInContig[tid].push_back(cG->getNumReads());
+            else//合并不成功
+             {
+                /*判断剩余的挽回次数
+                 * 不为0直接转发，下一层
+                 *为0直接写入孤立文件流
+                */
+                std::shared_ptr<my_read::Read> tmp_ptr;
+                rD->getRead(cG->firstReadId,tmp_ptr);
+                 tmp_ptr->cnt--;
+                if(tmp_ptr->cnt>=0)
+                {
+                    reads[tid]->emplace_back(std::move(tmp_ptr));
+                }
+                else
+                {
+                    cG->writeReadlone(cgw,tmp_ptr->id);
+                }
             }
             // if the graph is large, run malloc_trim so that memory released to system
             // without this the memory keeps
@@ -82,7 +82,7 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
                 malloc_trim(0);
 #endif
 
-            contigId++;
+
 #ifdef LOG
             {
             auto end = std::chrono::system_clock::now();
@@ -104,14 +104,17 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
 #endif
     } // pragma omp parallel
     //把本轮的合并成功，以及查询次数不为0的的序列，合并成一个vector
-
+    for(int i=1;i<numThr;i++)
+    {
+        reads[0]=CombineVectors(std::move(reads[0]),std::move(reads[i]));
+    }
 
     //然后转发给rD类
-
+    rD->setReads(reads[0]);
     //把本轮得到的编辑脚本提交给线程池，让他复责通用压缩任务。
 
     // now perform last step, combining files from threads and writing metadata
-    finishWriteConsensus(numReadsInContig);
+//    finishWriteConsensus(numReadsInContig);
 
 
 
@@ -128,8 +131,6 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
     std::cout << "MinHash passed & not already in graph " << summary.countMinHashNotInGraph << std::dec << " reads\n";
     std::cout << "Merge Sort passed " << summary.countMergeSort << std::dec << " reads\n";
     std::cout << "Aligner passed " << summary.countAligner << std::dec << " reads\n";
-
-
 }
 
 bool  Consensus::addRelatedReads(ConsensusGraph *cG)

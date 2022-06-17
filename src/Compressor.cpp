@@ -48,17 +48,9 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
     std::cout << "number of threads: " << numThr << std::endl;
     double vm_usage, resident_set;
     std::cout << "Entering compress():\n";
-    //单独拿出一个线程，构建的线程池，为每轮生成的编辑脚本，进行通用压缩，
-    ThreadPool my_ThreadPool(1);
-    if(numThr<=1)
-    {
-        throw std::runtime_error(
-                "The number of threads must be greater than one");
-    }
     size_t loop_index=0;
     mem_usage(vm_usage, resident_set);
-
-    omp_set_num_threads(numThr-1);
+    omp_set_num_threads(numThr);
     {
         //先读入文件，加载到数据类中
         ReadData rD;
@@ -78,6 +70,7 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
                 rF.k = k;
                 rF.n = n;
                 rF.l = l;
+                rF.que_cnt=que_cnt;
                 rF.max_occ = max_occ;
                 rF.tempDir = tempDir;
                 {
@@ -105,15 +98,14 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
                     consensus.k= k;
                     consensus.tempDir = tempDir;
                     consensus.tempFileName = tempFileName;
-                    consensus.numThr = numThr-1;
+                    consensus.numThr = numThr;
                     //parameters for minimap2
                     consensus.m_k = m_k;
                     consensus.m_w = m_w;
                     consensus.max_chain_iter = max_chain_iter;
                     consensus.edge_threshold = edge_threshold;
-                    consensus.generateAndWriteConsensus();
+                    consensus.generateAndWriteConsensus(loop_index++);
                 }
-                //使用通用压缩工具压缩这一轮的编辑脚本
         }
 
     }
@@ -135,16 +127,20 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
 #pragma omp parallel num_threads(numThr)
 #pragma omp for
             for (int i = 0; i < numThr; i++) {
-                std::string fullPath = tempDir + tempFileName + ".tid." + std::to_string(i) + ext;
-                std::string outPath = fullPath + "Compressed";
-                // use lzma2 for .base to get better compression
-                if (ext == std::string(".base"))
-                    lzma2::lzma2_compress(fullPath.c_str(), outPath.c_str());
-                else
-                    bsc::BSC_compress(fullPath.c_str(), outPath.c_str());
-                uncompressedSizes[i] = boost::filesystem::file_size(fullPath);
-                compressedSizes[i] = boost::filesystem::file_size(outPath);
-                boost::filesystem::remove(fullPath);
+                for(int j=0;j<loop_index;j++)
+                {
+                    std::string fullPath = tempDir + tempFileName +".loop."+ std::to_string(j) + ".tid." + std::to_string(i) + ext;
+                    std::string outPath = fullPath + "Compressed";
+                    // use lzma2 for .base to get better compression
+                    if (ext == std::string(".base"))
+                        lzma2::lzma2_compress(fullPath.c_str(), outPath.c_str());
+                    else
+                        bsc::BSC_compress(fullPath.c_str(), outPath.c_str());
+                    uncompressedSizes[i] = boost::filesystem::file_size(fullPath);
+                    compressedSizes[i] = boost::filesystem::file_size(outPath);
+                    boost::filesystem::remove(fullPath);
+                }
+
             }
             size_t totalUncompressed = 0, totalCompressed = 0;
             for (int i = 0; i < numThr; i++) {

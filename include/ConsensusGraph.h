@@ -179,9 +179,12 @@ public:
     std::ofstream posFile;
     std::ofstream editTypeFile;
     std::ofstream editBaseFile;
+    std::ofstream refidFile;
     std::ofstream idFile;
     std::ofstream complementFile;
-    std::ofstream genomeFile;
+//    std::ofstream genomeFile;
+    //lonefile
+    //id与序列交互占一行
     std::ofstream loneFile;
     ConsensusGraphWriter(const std::string &filePrefix);
 };
@@ -238,7 +241,11 @@ public:
     std::map<read_t, Read> readsInGraph;
 
     ConsensusGraph();
-
+    /**
+     * @param
+     * @return生成新的主链类，
+     */
+    std::shared_ptr<my_read::Read> get_mainpathread();
     /**
      * Initializes the graph from a seeding read
      * @param seed
@@ -271,6 +278,8 @@ public:
      * @param pos The relative position of the read in contig
      * @param reverseComplement Whether s is the reverse complement or the
      * actual read
+     *
+     *
      */
     void updateGraph(const std::string &s, std::vector<Edit> &editScript,
                      ssize_t beginOffset, ssize_t endOffset, read_t readId,
@@ -301,7 +310,7 @@ public:
      *
      * @param filename
      */
-    void writeMainPath(ConsensusGraphWriter &cgw);
+//    void writeMainPath(ConsensusGraphWriter &cgw);
 
     /**
      * @param editScript outputs the editScript (consisting of insertions,
@@ -320,6 +329,7 @@ public:
      */
     void writeReads(ConsensusGraphWriter &cgw);
 
+    void writeReads(ConsensusGraphWriter &cgw,const read_t ref_id);
     /**
      * @brief Write the streams for the read in lone contig
      *
@@ -327,6 +337,7 @@ public:
      */
     void writeReadLone(ConsensusGraphWriter &cgw);
 
+    void writeReadlone(ConsensusGraphWriter &cgw,const read_t readid);
     /**
      * @brief Write the ids for the lone reads for the thread
      *
@@ -511,6 +522,7 @@ private:
     size_t writeRead(std::ofstream &posFile, std::ofstream &editTypeFile,
                      std::ofstream &editBaseFile, Read &r, read_t id);
 
+
     /**
      * @brief Deletes the parts of mainPath strictly to the left of
      * leftMostUnchangedNode and strictly to the right of rightMostUnchangedNode
@@ -519,6 +531,7 @@ private:
      * portions of mainPath.edges and mainPath.path
      */
     void clearMainPath();
+
 
 };
 
