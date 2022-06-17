@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="lhcserver (ca44c8b0-f005-4391-a910-5be5c75436a9)" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" serverName="lhcserver (ca44c8b0-f005-4391-a910-5be5c75436a9)" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="huangnengserver (117cdd3f-e8b7-49ba-829b-795fd6cb1b26)">
         <serverdata>
@@ -32,6 +32,5 @@
         </serverdata>
       </paths>
     </serverData>
-    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>
