@@ -169,8 +169,8 @@ private:
 template<typename T>
 std::shared_ptr<std::vector<T>> CombineVectors(std::shared_ptr<std::vector<T>> &&a, std::shared_ptr<std::vector<T>> &&b) {
     std::shared_ptr<std::vector<T>> ab = move(a);
-    ab.insert(
-            ab.end(), std::make_move_iterator(b.begin()), std::make_move_iterator(b.end()));
+    (*ab).insert(
+            ab->end(), std::make_move_iterator(b->begin()), std::make_move_iterator(b->end()));
     return ab;
 }
 template<typename T>

@@ -21,6 +21,7 @@ void ReadData::loadFromFile(const char *filename, enum Filetype filetype) {
     }
 }
 ReadData::ReadData() {
+
     readData=std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>(new std::vector<std::shared_ptr<my_read::Read>>());
 }
 void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
@@ -107,4 +108,21 @@ void ReadData::getindex(read_t readId, read_t &index) {
 void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads) {
     readData=reads;
     numReads=reads->size();
+}
+size_t ReadData::sequence_number_threshold=0;
+std::atomic<read_t> ReadData::index;
+/// TODO: profile and maybe optimize
+char ReadData::toComplement(char base) {
+    switch (base) {
+        case 'A':
+            return 'T';
+        case 'T':
+            return 'A';
+        case 'C':
+            return 'G';
+        case 'G':
+            return 'C';
+        default:
+            return base;
+    }
 }

@@ -154,6 +154,9 @@ add_library(springlib
         include/lzma2_helper.h
         src/lzma2.cpp
         include/OmpMutex.h
+        src/OmpMutex.cpp
+        include/Edits.h
+        src/Edits.cpp
         )
 target_include_directories(springlib
         PUBLIC include src
@@ -172,7 +175,7 @@ target_compile_options(springlib
         $<$<CONFIG:RelWithDebInfo>:-g -O3 -msse4.1>)
 target_compile_options(springlib
         PUBLIC
-        $<$<CONFIG:Debug>:-g -O3 -msse4.1 -fsanitize=address -fno-omit-frame-pointer>)
+        $<$<CONFIG:Debug>:-g -O3 -msse4.1 -fsanitize=address -fno-omit-frame-pointer> -static-libasan)
 if ( CHECKS )
     target_compile_options(springlib
             PUBLIC
@@ -206,6 +209,9 @@ target_link_libraries(springlib
         xxHash::xxhash
         )
 
+target_link_libraries(springlib
+        PUBLIC
+        $<$<CONFIG:Debug>:-fsanitize=address -fno-omit-frame-pointer>)
 # OpenMp support
 if(OpenMP_CXX_FOUND)
     target_link_libraries(springlib PUBLIC OpenMP::OpenMP_CXX)

@@ -187,3 +187,19 @@ OrderHashReadFilter::~OrderHashReadFilter() {
     if (randNumbers)
         delete[] randNumbers;
 }
+size_t OrderHashReadFilter::que_cnt;
+size_t OrderHashReadFilter::max_occ;
+kMer_t OrderHashReadFilter::kMerToInt(const std::string &s) {
+    size_t l = s.length();
+    kMer_t result = 0;
+    for (size_t i = 0; i < l; ++i) {
+        result <<= 2;
+        result |= baseToInt(s[i]);
+    }
+    return result;
+}
+// Using the bit operations version of this function provides a 13X improvement
+// in speed
+char OrderHashReadFilter::baseToInt(const char base) {
+    return (base & 0b10) | ((base & 0b100) >> 2);
+}
