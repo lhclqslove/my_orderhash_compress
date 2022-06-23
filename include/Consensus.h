@@ -44,7 +44,7 @@ struct match_info
     ssize_t beginOffset, endOffset;
     ssize_t pos;
     bool reverseComplement;
-    size_t match_length;
+    ssize_t match_length;
 };
 
 class Consensus {
@@ -70,6 +70,7 @@ public:
      */
     void generateAndWriteConsensus(size_t loopindex);
 
+    void writeLoneReadtofile(size_t loopindex);
     /**
      * @brief Combine files from threads and write metadata file
      *
@@ -122,7 +123,7 @@ private:
      * @brief Initializes numReads, readStatusLock
      *
      */
-    void initialize();
+    void initialize(size_t loopindex);
 
     /**
      * @brief Gets an unadded read and updates its status to added

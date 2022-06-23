@@ -15,14 +15,18 @@ void ReadData::loadFromFile(const char *filename, enum Filetype filetype) {
     switch(filetype){
         case FASTQ:
             loadFromFastqFile(filename, false);
+            break;
         case GZIP:
             loadFromFastqFile(filename, true);
-
+            break;
+        default:
+            assert(false);
     }
 }
 ReadData::ReadData() {
 
-    readData=std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>(new std::vector<std::shared_ptr<my_read::Read>>());
+    readData=std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>(new std::vector<std::shared_ptr<my_read::Read>>(0,
+                                                                                                                          nullptr));
 }
 void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
     numReads=0;
@@ -68,7 +72,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
 #pragma omp parallel for
         for (size_t i = 0; i < numReadsCurrBlock; i++) {
             std::shared_ptr<my_read::Read> ptr(new my_read::Read(
-                    lines[i],numReadsInserted+i,que_cnt));
+                    lines[i],numReadsInserted+i,recover_cnt));
             (*readData)[numReadsInserted+i] = std::move(ptr);
         }
         numReadsInserted += numReadsCurrBlock;
@@ -77,7 +81,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
         numReadsCurrBlock = 0;
     }
     index=numReads;//初始化位序列数，原始序列的下标为[0,numread-1]
-    sequence_number_threshold=numReads/10;//序列数限制
+    sequence_number_threshold=numReads/100;//序列数限制
 
     assert(numReads != 0);
     avgReadLen = totalNumBases / numReads;
@@ -85,12 +89,14 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
     std::cout << "numReads " << numReads << std::endl;
     std::cout << "avgReadLen " << avgReadLen << std::endl;
     std::cout << "maxReadLen " << maxReadLen << std::endl;
+    assert(getRead(0)!= nullptr);
     if (gzip_flag) {
         delete fin;
         delete inbuf;
     }
     // close files
     infile.close();
+
 }
 read_t ReadData::getNumReads() {
     return numReads;
@@ -100,7 +106,13 @@ void ReadData::getRead(read_t readId, std::string &readStr) {
     return;
 }
 void ReadData::getRead(read_t readId, std::shared_ptr<my_read::Read> &ptr) {
-    ptr= std::shared_ptr<my_read::Read>((*readData)[readId]);
+    ptr= (*readData)[readId];
+
+}
+
+std::shared_ptr<my_read::Read> ReadData::getRead(read_t readid) {
+    assert(readid<(*readData).size());
+    return  (*readData)[readid];
 }
 void ReadData::getindex(read_t readId, read_t &index) {
     index=(*readData)[readId]->id;
@@ -108,6 +120,11 @@ void ReadData::getindex(read_t readId, read_t &index) {
 void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads) {
     readData=reads;
     numReads=reads->size();
+    maxReadLen=0;
+    for(read_t i=0;i<numReads;i++)
+    {
+        maxReadLen=std::max(maxReadLen,(*readData)[i]->w.size()+1);
+    }
 }
 size_t ReadData::sequence_number_threshold=0;
 std::atomic<read_t> ReadData::index;

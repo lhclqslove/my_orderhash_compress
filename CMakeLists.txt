@@ -23,6 +23,9 @@ if(result)
     message(STATUS "Support for Interprocedural Optimization detected.")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
+
+#set(LOG True)
+
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")#构建类型
 message(STATUS "CHECKS=${CHECKS} (Use -DCHECKS=True to enable all checks")
 message(STATUS "LOG=${LOG} (Use -LOG=True to output log files for analysis")#log条件编译

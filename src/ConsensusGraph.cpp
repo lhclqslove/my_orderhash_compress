@@ -143,7 +143,16 @@ ConsensusGraphWriter::ConsensusGraphWriter(const std::string &filePrefix) {
 //    genomeFile.open(genomeFileName);
     loneFile.open(loneFileName);
 }
-
+void ConsensusGraphWriter::closefilestream() {
+    posFile.close();
+    refidFile.close();
+//    readidFile.open(read_id,std::ios::binary);
+    editTypeFile.close();
+    editBaseFile.close();
+    idFile.close();
+//    genomeFile.open(genomeFileName);
+    loneFile.close();
+}
 void ConsensusGraph::initialize(const std::string &seed, read_t readId,
                                 long pos) {
     // pos is zero here                                
@@ -169,7 +178,7 @@ void ConsensusGraph::initialize(const std::string &seed, read_t readId,
     // endPos is set to pos+1=1 here because we only inserted one base to mainPath
     // Rest will be inserted later when calculateMainPathGreedy is called
 }
-std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread()
+std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread(size_t cnt)
 {
     //原子操作获取新id
     size_t newindex=ReadData::index++;
@@ -182,6 +191,7 @@ std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread()
     for (auto e : mainPath.edges) {
         ptr->w.push_back(e->count);
     }
+    ptr->cnt=cnt;
     return  ptr;
 }
 void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long pos) {
@@ -190,9 +200,16 @@ void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long
     read->read->to_string(seed);
     size_t len = seed.length();
     Node *currentNode = createNode(seed[0]);
+    assert(currentNode);
     // We create a read that points to this node
     readsInGraph.insert(std::make_pair(
             read->id, ConsensusGraph::Read(pos, currentNode, seed.length(), false)));
+#ifdef LOG
+    if(currentNode== nullptr)
+    {
+        std::cout<<"init insert nullptr"<<std::endl;
+    }
+#endif
     rightMostUnchangedNode = currentNode;
     rightMostUnchangedNodeOffset = 0;
     leftMostUnchangedNode = currentNode;
@@ -211,7 +228,7 @@ void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long
     // Rest will be inserted later when calculateMainPathGreedy is called
 }
 bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset,size_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter) {
+            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter) {
     // General comments: 
     // 1. The whole idea behind startPos, endPos and Read.pos in ConsensusGraph
     //    is to provide a reference point for the main path when looking for the next 
@@ -622,7 +639,38 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
     //    in the graph where step 2 ends, which will be roughly the end of mainPath
     //    in this case).
     std::string  s;
-    read->read->to_string(s);
+    std::string readStr1;
+    read->read->to_string(readStr1);
+
+    if (reverseComplement)
+        ReadData::toReverseComplement(
+                readStr1.begin(), readStr1.end(),
+                std::inserter(s, s.end()));
+    else
+        s = readStr1;
+//#ifdef  LOG
+//    std::string yuanstr=this->mainPath.path;
+//    size_t siz=editScript.size();
+//    std::cout<<"s:len "<<s.size()<<" "<<s<<std::endl;
+//    std::cout<<"mainpath len:"<< this->mainPath.path.size()<<" "<< this->mainPath.path<<std::endl;
+//////    std::cout<<"delbeg"<<this->mainPath.path.substr(beginOffset)<<std::endl;
+//    std::cout<<" editScript.size::"<<editScript.size()<<std::endl;
+////    std::cout<<"beginOffset:"<<beginOffset<<" endOffset:"<<endOffset<<" pos:"<<pos<<std::endl;
+////    std::cout<<"reverse:"<<reverseComplement<<std::endl;
+////    if(editScript[0].editType==EDIT_TYPE::INSERT)
+////    {
+////        std::cout<<"insert"<<" "<<editScript[0].editInfo.ins<<std::endl;
+////    }
+////    else if(editScript[0].editType==EDIT_TYPE::SAME)
+////    {
+////        std::cout<<"same"<<" "<<editScript[0].editInfo.num<<std::endl;
+////    }
+////    for(auto &edit:editScript)
+////    {
+////        std::cout<<edit.editType<<std::endl;
+////    }
+//
+//#endif
     const auto &edgeInPathEnd = mainPath.edges.end();
     auto edgeInPath = mainPath.edges.begin();
     /** nodeInPath should always be set to edgeInPath.source, unless it is the
@@ -656,7 +704,9 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
         else
             leftMostUnchangedNode = mainPath.edges[0]->source;
     }
-
+//#ifdef LOG
+//    std::cout<<leftMostUnchangedNodeOffset<<"offset  "<<rightMostUnchangedNodeOffset<<std::endl;
+//#endif
     auto advanceNodeInPath = [&]() {
         if (edgeInPath == edgeInPathEnd)
             return;
@@ -681,40 +731,52 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
             // This number must be positive
             size_t numOfNodes2Insert = -beginOffset;
             // std::cout << numOfNodes2Insert << " ";
-            size_t i = 0;
+//            size_t i = 0;
             // We create an initial node
-            currentNode = createNode(s[i++]);
+            currentNode = createNode(s[qpos++]);
             initialNode = currentNode;
-            qpos++;
-            for (; i < numOfNodes2Insert; ++i) {
-                Node *nextNode = createNode(s[i]);
-                createEdge(currentNode, nextNode,  read->id,read->w[i-1]);
+//            qpos++;
+            for (; qpos < numOfNodes2Insert; ++qpos) {
+                Node *nextNode = createNode(s[qpos]);
+                createEdge(currentNode, nextNode,  read->id,read->w[qpos-1]);
                 currentNode = nextNode;
             }
         }
     };
 
     initialAdvance();
-
+//#ifdef LOG
+//    std::cout<<"qpos:"<<qpos<<std::endl;
+//#endif
     auto insertNode = [&](char base) {
         if (!currentNode) {
             // If there is no currentNode, we create one
             currentNode = createNode(base);
             initialNode = currentNode;
-
+//#ifdef LOG
+//            if( initialNode== nullptr)
+//            {
+//                std::cout<<"%%%instert nullptr"<<std::endl;
+//
+//            }
+//#endif
         } else {
             Edge *edge = currentNode->getEdgeToSide(base);
             if (edge) {
-                edge->addRead(readId,read->w[qpos-1]);
+                edge->addRead(readId,read->w[(qpos<read->w.size()?read->w[qpos]:read->w.back())]);
             } else {
                 Node *n = createNode(base);
-                edge =  createEdge(currentNode, n,  read->id,read->w[qpos-1]);
+                edge =  createEdge(currentNode, n,  read->id,(qpos<read->w.size()?read->w[qpos]:read->w.back()));
             }
             qpos++;
             currentNode = edge->sink;
         }
     };
-
+#ifdef LOG
+//    std::cout<<"come to here"<<std::endl;
+//    std::cout<<editScript.size()<<std::endl;
+//    std::cout<<read->w.size()<<std::endl;
+#endif
     // Now we deal with the edits one by one
     for (const Edit &e : editScript) {
         if (e.editType == SAME) {
@@ -725,23 +787,31 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
                 // If there is no currentNode, set it and initialNode
                 initialNode = nodeInPath;
                 currentNode = nodeInPath;
+//#ifdef LOG
+//                if( initialNode== nullptr)
+//                {
+//                    std::cout<<"!!!!instert nullptr"<<std::endl;
+//
+//                }
+//#endif
             } else {
                 // Otherwise create an edge from the currentNode to nodeInPath
                 Edge *edge = currentNode->getEdgeTo(nodeInPath);
                 if (edge) {
                     // If there is already an edge to it
-                    edge->addRead(readId,read->w[qpos-1]);
+                    edge->addRead(readId,read->w[(qpos<read->w.size()?read->w[qpos]:read->w.back())]);
                 } else {
                     // Otherwise create an edge
-                    edge = createEdge(currentNode, nodeInPath, readId,read->w[qpos-1]);
+                    edge = createEdge(currentNode, nodeInPath, readId,read->w[(qpos<read->w.size()?read->w[qpos]:read->w.back())]);
                 }
                 currentNode = nodeInPath;
+                qpos++;
             }
             advanceNodeInPath();
-            qpos++;
             // We deal with the rest of the nodes
             for (size_t i = 1; i < num; ++i) {
-                currentNode->getEdgeTo(nodeInPath)->addRead(readId,read->w[qpos]);
+
+                currentNode->getEdgeTo(nodeInPath)->addRead(readId,read->w[(qpos<read->w.size()?read->w[qpos]:read->w.back())]);
                 currentNode = nodeInPath;
                 advanceNodeInPath();
                 qpos++;
@@ -750,11 +820,14 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
             // Deletion just means advancing the node in path
             advanceNodeInPath();
         } else if (e.editType == INSERT) {
+
             char base = e.editInfo.ins;
             insertNode(base);
         }
     }
-
+//#ifdef LOG
+//    std::cout<<"done for editScript"<<std::endl;
+//#endif
     // Finally we deal with endOffset
     if (endOffset > 0) {
         auto end = s.end();
@@ -763,9 +836,23 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
         }
     }
     assert(numUnchanged > 0);
+//#ifdef LOG
+//    std::cout<<"before^^^^init"<<std::endl;
+//#endif
+//    assert(initialNode);
+//#ifdef LOG
+//    std::cout<<"after^^^^init"<<std::endl;
+//#endif
     // Don't forget to add the read!
     readsInGraph.insert(std::make_pair(
             readId, Read(pos, initialNode, s.length(), reverseComplement)));
+//#ifdef LOG
+//    if( initialNode== nullptr)
+//    {
+//        std::cout<<"instert nullptr"<<std::endl;
+//
+//    }
+//#endif
 }
 
 Path &ConsensusGraph::calculateMainPathGreedy() {
@@ -1357,6 +1444,12 @@ void ConsensusGraph::removeEdge(Edge *e,
 
             uint32_t offset;
             std::vector<Edit> editScript;
+//#ifdef LOG
+//            if(r.start== nullptr)
+//            {
+//                std::cout<<id<<" "<<r.reverseComplement<<" "<<r.pos<<std::endl;
+//            }
+//#endif
             size_t editDis = read2EditScript(r, id, editScript, offset);
             //posFile.write((char*)&offset,sizeof(uint32_t));
             DirectoryUtils::write_var_uint32(offset, posFile);

@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
     std::string infile, outfile;
     int num_thr;
     std::string working_dir;
-    size_t k, n,l,max_occ,que_cnt, m_k, m_w, max_chain_iter, edge_threshold;
+    size_t k, n,l,max_occ,que_cnt,recover_cnt, m_k, m_w, max_chain_iter, edge_threshold;
     po::options_description desc("Allowed options");
     desc.add_options()("help,h", po::bool_switch(&help_flag), "produce help message")(
             "compress,c", po::bool_switch(&compress_flag), "compress")(
@@ -50,6 +50,8 @@ int main(int argc, char **argv) {
             "num_kmer,l",po::value<size_t>(&l)->default_value(2),"orderhash number kmer for per hashval")(
             "num-hash,n", po::value<size_t>(&n)->default_value(60),
             "number of hash functions for orderhash (default 60)")(
+             "recover-cnt",po::value<size_t>(&recover_cnt)->default_value(3),"Maximum number of additional queries"
+                    )(
             "que_cnt", po::value<size_t>(&que_cnt)->default_value(3),
             "number of read cnt  for every query (default 3)")(
             "max_occ",po::value<size_t>(&max_occ)->default_value(3),"orderhash only sensitive for kmer with occ<maxocc"
@@ -61,7 +63,9 @@ int main(int argc, char **argv) {
             "max-chain-iter", po::value<size_t>(&max_chain_iter)->default_value(400),
             "the max number of partial chains during chaining for minimap2 (default 400)")(
             "working-dir,w", po::value<std::string>(&working_dir)->default_value("."),
-            "directory to create temporary files (default current directory)");
+            "directory to create temporary files (default current directory)")(
+            "edge-thr", po::value<size_t>(&edge_threshold)->default_value(4000000),
+            "the max number of edges allowed in a consensus graph (default 4000000)");
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
@@ -112,6 +116,8 @@ int main(int argc, char **argv) {
             compressor.n = n;
             compressor.l=l;
             compressor.max_occ=max_occ;
+            compressor.que_cnt=que_cnt;
+            compressor.recover_cnt=recover_cnt;
 //            compressor.overlapSketchThreshold = overlapSketchThreshold;
             compressor.m_k = m_k;
             compressor.m_w = m_w;
@@ -160,7 +166,9 @@ int main(int argc, char **argv) {
         std::cout << desc << "\n";
         return 1;
     }
+    std::cout<<"start remove tmp dir"<<std::endl;
     boost::filesystem::remove_all(temp_dir);
+    std::cout<<"remove tmpdir success"<<std::endl;
     temp_dir_flag_global = false;
     return 0;
 }

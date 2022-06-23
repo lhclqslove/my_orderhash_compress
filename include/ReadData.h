@@ -5,6 +5,7 @@
 #define MY_ORDERHASH_COMPRESS_READDATA_H
 #include "Read.h"
 #include "Types.h"
+#include <atomic>
 class ReadData
 {
     public:
@@ -20,8 +21,11 @@ class ReadData
         /** The length of the longest read **/
         size_t maxReadLen;
         std::string tempDir;
-        size_t que_cnt;//查询挽回次数
+        size_t recover_cnt;//查询挽回次数
         static size_t sequence_number_threshold;//序列数阈值，当数据集的序列数小于阈值时不在合并，设置为原有序列10%
+
+
+
         /// 加载序列文件存入DNAbitset
         /// \param filename
         /// \param filetype
@@ -59,7 +63,8 @@ class ReadData
         void getRead(read_t readId,std::shared_ptr<my_read::Read> &ptr);
         void setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads);
         void getindex(read_t readId,read_t &index);
-        /**
+        std::shared_ptr<my_read::Read> getRead(read_t readid);
+         /**
          * @brief Turns a DNA strand to its reverse complement.
          *
          * @tparam Iterator Bidirectional random access iterator that dereferences
@@ -76,8 +81,8 @@ class ReadData
                                         Iterator originalEnd,
                                         Inserter reverseComplement);
         /* Destructor to delete bitset file when applicable */
-    private:
 
+    private:
 
         read_t numReads;
         /*存储序列文件到内存中*/

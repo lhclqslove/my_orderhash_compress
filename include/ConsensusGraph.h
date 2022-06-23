@@ -187,6 +187,7 @@ public:
     //id与序列交互占一行
     std::ofstream loneFile;
     ConsensusGraphWriter(const std::string &filePrefix);
+    void closefilestream();
 };
 
 /**
@@ -242,10 +243,10 @@ public:
 
     ConsensusGraph();
     /**
-     * @param
+     * @param cnt 查询的挽回次数
      * @return生成新的主链类，
      */
-    std::shared_ptr<my_read::Read> get_mainpathread();
+    std::shared_ptr<my_read::Read> get_mainpathread(size_t cnt);
     /**
      * Initializes the graph from a seeding read
      * @param seed
@@ -261,7 +262,7 @@ public:
      */
     __attribute__((warn_unused_result)) bool
     alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset,size_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter);
+            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter);
 
     /**
      * @brief Updates the graph with the new read s, and the alignment results

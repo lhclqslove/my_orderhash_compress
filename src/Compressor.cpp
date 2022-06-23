@@ -55,8 +55,10 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
         //先读入文件，加载到数据类中
         ReadData rD;
         rD.tempDir = tempDir;
+        rD.recover_cnt=recover_cnt;
         auto read_start = std::chrono::high_resolution_clock::now();
         rD.loadFromFile(inputFileName, filetype);
+
         auto read_end = std::chrono::high_resolution_clock::now();
         auto duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
@@ -104,9 +106,33 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
                     consensus.m_w = m_w;
                     consensus.max_chain_iter = max_chain_iter;
                     consensus.edge_threshold = edge_threshold;
+#ifdef  LOG
+                    std::cout <<"loop_index"<<loop_index<<std::endl;
+#endif
                     consensus.generateAndWriteConsensus(loop_index++);
                 }
         }
+        /*
+         * 把剩下下的序列全部写入lone文件中
+         *
+         * */
+        Consensus consensus;
+        {
+            consensus.rD = &rD;
+            consensus.tempDir = tempDir;
+            consensus.tempFileName = tempFileName;
+            consensus.writeLoneReadtofile(loop_index);
+        }
+        /*
+         * 写入说明信息
+         * */
+        std::ofstream metaData;
+        metaData.open(tempDir + "metaData");
+        metaData<<"loop_index="<<loop_index<<'\n';
+        std::cout << "numreads = " << ReadData::index<< '\n';
+        metaData<< "numreads = " << ReadData::index<< '\n';
+        metaData << "numThr=" << numThr << '\n';
+        metaData.close();
 
     }
 
@@ -127,8 +153,9 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
 #pragma omp parallel num_threads(numThr)
 #pragma omp for
             for (int i = 0; i < numThr; i++) {
-                for(int j=0;j<loop_index;j++)
+                for(int j=0;j<=loop_index;j++)
                 {
+                    if(j==loop_index&&i!=0)continue;
                     std::string fullPath = tempDir + tempFileName +".loop."+ std::to_string(j) + ".tid." + std::to_string(i) + ext;
                     std::string outPath = fullPath + "Compressed";
                     // use lzma2 for .base to get better compression

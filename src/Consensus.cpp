@@ -19,37 +19,72 @@
 #endif
 
 void Consensus::generateAndWriteConsensus(size_t loopindex) {
-    if(loopindex==0)initialize();//只在第一轮判断是否是重复的
-    else isRepetitive.resize(numReads, false);
+    initialize(loopindex);//只在第一轮判断是否是重复的
     std::vector<std::vector<read_t>> numReadsInContig(numThr);
     std::vector<std::vector<read_t>> loneReads(numThr);
     std::vector<std::vector<std::string>>contig(numThr);
     //用来保存每个线程的的合并序列
     std::vector<std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>>reads(numThr);
+    //初始化必须先给智能指针分配内存
+    for(int i=0;i<numThr;i++)
+    {
+        reads[i]=std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>>(new std::vector<std::shared_ptr<my_read::Read>>());
+    }
     ConsensusGraph *cG = nullptr;
     std::vector<CountStats> count_stats(numThr);
-
+    std::vector<size_t>mergereads_cnt(numThr,0);
+#ifdef LOG
+    std::vector<size_t>mergereads_cnt(numThr,0);
+#endif
 #pragma omp parallel private(cG)
     {
         auto tid = omp_get_thread_num();   
         std::ofstream logfile;
 #ifdef LOG
+
         logfile.open("logfile"+std::to_string(tid), std::ofstream::out);
 #endif
         std::string filePrefix = tempDir + tempFileName+".loop."+ std::to_string(loopindex) + ".tid." + std::to_string(tid);
+
         ConsensusGraphWriter cgw(filePrefix);
         read_t firstUnaddedRead = 0;
-        int contigId = 0;
+//#ifdef LOG
+//        std::cout<<filePrefix<<std::endl;
+//#endif
         // guarantee that all reads < firstUnaddedRead have been picked
         while ((cG = createGraph(firstUnaddedRead))) {
-            if (isRepetitive[cG->firstReadId])break;
+//#ifdef LOG
+//            std::cout<<cG->firstReadId<<" ************"<<rD->getRead(cG->firstReadId)->cnt<<std::endl;
+//            if(cG->firstReadId==13051)
+//            {
+//                std::cout<<"loopindex:"<<loopindex<<" "<<cG->mainPath.path<<" "<<cG->mainPath.path.size()<<std::endl;
+//            }
+//#endif
+            if (isRepetitive[cG->firstReadId])//自重复的直接压缩
+            {
+                std::shared_ptr<my_read::Read> tmp_ptr;
+                rD->getRead(cG->firstReadId,tmp_ptr);
+                cG->writeReadlone(cgw,tmp_ptr->id);
+                continue;
+            }
             if (addRelatedReads(cG))//如果合并成功
             {
                 //形成新的序列放入线程的vector
-                reads[tid]->emplace_back(std::move(cG->get_mainpathread()));
-                //给图中的两条序列，构造编辑脚本写入文件夹
-                cG->writeReads(cgw,reads[tid]->back()->id);
 
+                reads[tid]->emplace_back(std::move(cG->get_mainpathread(rD->recover_cnt)));
+                //给图中的两条序列，构造编辑脚本写入文件夹
+//#ifdef LOG
+//                if(cG->firstReadId==75)
+//                {
+//                    std::cout<<"****"<<reads[tid]->back()->id<<std::endl;
+//                }
+//#endif
+                cG->writeReads(cgw,reads[tid]->back()->id);
+                mergereads_cnt[tid]+=2;
+#ifdef LOG
+
+                mergereads_cnt[tid]+=2;
+#endif
             }
             else//合并不成功
              {
@@ -57,18 +92,28 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
                  * 不为0直接转发，下一层
                  *为0直接写入孤立文件流
                 */
+//#ifdef LOG
+//                std::cout<<cG->firstReadId<<" not find simerl read"<<std::endl;
+//#endif
                 std::shared_ptr<my_read::Read> tmp_ptr;
                 rD->getRead(cG->firstReadId,tmp_ptr);
                  tmp_ptr->cnt--;
-                if(tmp_ptr->cnt>=0)
+                if(tmp_ptr->cnt>0)
                 {
-                    reads[tid]->emplace_back(std::move(tmp_ptr));
+//#ifdef  LOG
+//                    std::cout<<"done here ***"<<(tmp_ptr== nullptr?0:1)<<" "<<cG->firstReadId<<std::endl;
+//                    std::cout<<tid<<" "<<numThr<<std::endl;
+//#endif
+                    assert(tid<numThr);
+                    assert(cG->firstReadId<rD->getNumReads());
+                    reads[tid]->emplace_back(rD->getRead(cG->firstReadId));
                 }
                 else
                 {
                     cG->writeReadlone(cgw,tmp_ptr->id);
                 }
             }
+
             // if the graph is large, run malloc_trim so that memory released to system
             // without this the memory keeps
             // increasing to very high
@@ -77,6 +122,9 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
                 run_malloc_trim = true;
 
             delete cG;
+//#ifdef LOG
+//            std::cout<<"dead here in loop 1 "<<std::endl;
+//#endif
 #ifdef USE_MALLOC_TRIM
             if (run_malloc_trim)
                 malloc_trim(0);
@@ -91,24 +139,51 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
             }
 #endif
         }
+        cgw.closefilestream();
         // finally, write ids of lone reads to end of id file
 
-        cG->writeIdsLone(cgw, loneReads[tid]);
-#ifdef LOG
-        {
-        auto end = std::chrono::system_clock::now();
-        std::time_t end_time = std::chrono::system_clock::to_time_t(end);
-        logfile<<"Thread "<<tid<<" ends at time: "<<std::ctime(&end_time);
-        }
-        logfile.close();
-#endif
+//        cG->writeIdsLone(cgw, loneReads[tid]);
+//#ifdef LOG
+//        std::cout<<"dead here in loop 3 "<<std::endl;
+//#endif
+//#ifdef LOG
+//        {
+//        auto end = std::chrono::system_clock::now();
+//        std::time_t end_time = std::chrono::system_clock::to_time_t(end);
+//        logfile<<"Thread "<<tid<<" ends at time: "<<std::ctime(&end_time);
+//        }
+//        logfile.close();
+//#endif
     } // pragma omp parallel
     //把本轮的合并成功，以及查询次数不为0的的序列，合并成一个vector
+#ifdef LOG
+    std::cout<<"开始合并 vec"<<std::endl;
+    for(int i=0;i<numThr;i++)
+    {
+        std::cout<<reads[i]->size()<<" ";
+    }std::cout<<std::endl;
+    size_t merge_cnt=0;
+    for(int i=0;i<mergereads_cnt.size();i++)merge_cnt+=mergereads_cnt[i];
+    std::cout<<"loopindex:"<<loopindex<<"merge read cnt"<<merge_cnt<<" "<<mergereads_cnt[0]<<std::endl;
+#endif
+    size_t merge_cnt=0;
+
+
+    for(int i=0;i<mergereads_cnt.size();i++)merge_cnt+=mergereads_cnt[i];
+    std::cout<<"loopindex:"<<loopindex<<"merge read cnt"<<merge_cnt<<" "<<mergereads_cnt[0]<<std::endl;
     for(int i=1;i<numThr;i++)
     {
-        reads[0]=CombineVectors(std::move(reads[0]),std::move(reads[i]));
-    }
 
+        reads[0]=CombineVectors(std::move(reads[0]),std::move(reads[i]));
+//#ifdef LOG
+
+
+//        std::cout<<"i"<<" "<<i<<" "<<reads[0]->size()<<std::endl;
+//#endif
+    }
+//#ifdef LOG
+//        std::cout<<"完成合并vec "<<std::endl;
+//#endif
     //然后转发给rD类
     rD->setReads(reads[0]);
     //把本轮得到的编辑脚本提交给线程池，让他复责通用压缩任务。
@@ -120,19 +195,31 @@ void Consensus::generateAndWriteConsensus(size_t loopindex) {
 
 
 
-    // compute total count stats by adding for all threads
-    CountStats summary;
-    for (auto &c : count_stats)
-        summary = summary + c;
-
-    std::cout << "\n";
-//    std::cout << "#LoneReads = " << totalNumLoneReads << "\n";
-    std::cout << "MinHash passed " << summary.countMinHash << std::dec << " reads\n";
-    std::cout << "MinHash passed & not already in graph " << summary.countMinHashNotInGraph << std::dec << " reads\n";
-    std::cout << "Merge Sort passed " << summary.countMergeSort << std::dec << " reads\n";
-    std::cout << "Aligner passed " << summary.countAligner << std::dec << " reads\n";
+//    // compute total count stats by adding for all threads
+//    CountStats summary;
+//    for (auto &c : count_stats)
+//        summary = summary + c;
+//
+//    std::cout << "\n";
+////    std::cout << "#LoneReads = " << totalNumLoneReads << "\n";
+//    std::cout << "MinHash passed " << summary.countMinHash << std::dec << " reads\n";
+//    std::cout << "MinHash passed & not already in graph " << summary.countMinHashNotInGraph << std::dec << " reads\n";
+//    std::cout << "Merge Sort passed " << summary.countMergeSort << std::dec << " reads\n";
+//    std::cout << "Aligner passed " << summary.countAligner << std::dec << " reads\n";
 }
 
+void Consensus::writeLoneReadtofile(size_t loopindex) {
+    std::string filePrefix = tempDir + tempFileName+".loop."+ std::to_string(loopindex) + ".tid." + std::to_string(0);
+    ConsensusGraphWriter cgw(filePrefix);
+    for(size_t i=0;i<rD->getNumReads();i++)
+    {
+        auto tmpptr=rD->getRead(i);
+        cgw.loneFile<<std::to_string(tmpptr->id)<<std::endl;
+        std::string read;
+        tmpptr->read->to_string(read);
+        cgw.loneFile<<read<<std::endl;
+    }
+}
 bool  Consensus::addRelatedReads(ConsensusGraph *cG)
 {
     const std::string originalString=cG->mainPath.path;
@@ -146,16 +233,25 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
     std::vector<match_info> match_infos(2*OrderHashReadFilter::que_cnt);//用来储存和候选序列的比对结果。
     size_t sum_index=0;
     bool all[] = {false, true};
+
     for (bool reverseComplement : all) {
         std::vector<read_t> results;
 
         rF->getFilteredReads(reverseComplement ? reverseComplementString
                                                : originalString,
                              results, OrderHashReadFilter::que_cnt);
-
+//#ifdef LOG
+//        std::cout<<reverseComplement<<" res.size:"<<results.size()<<std::endl;
+//#endif
+        if(results.size()==0)continue;
         // Try to add them one by one
         for (const auto r: results) {
+
             // check if we exceed the edge limit in the graph
+//#ifdef LOG
+////            std::cout<<r<<std::endl;
+////            std::cout<<cG->getNumEdges()<<" edgenum:"<<edge_threshold<<std::endl;
+//#endif
             if (cG->getNumEdges() >= edge_threshold) {
                 return false;
             }
@@ -171,9 +267,9 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
             if (readStr1.size() < 32) { // for len below 32, minhash is meaningless
                 continue;
             }
-#ifdef LOG
-            logfile<<"Contig: " << contigId << ", Read passed MinHash "<<r<<", read length: " << readStr1.length()<< "\n";
-#endif
+//#ifdef LOG
+//            logfile<<"Contig: " << contigId << ", Read passed MinHash "<<r<<", read length: " << readStr1.length()<< "\n";
+//#endif
             if (reverseComplement)
                 ReadData::toReverseComplement(
                         readStr1.begin(), readStr1.end(),
@@ -183,67 +279,113 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
 //            std::vector<Edit> editScript;
 //            ssize_t beginOffset, endOffset;
 //            ssize_t pos;
+
             match_infos[sum_index].vid=r;
+
             rD->getindex(r,match_infos[sum_index].id);
             match_infos[sum_index].reverseComplement = reverseComplement;
             bool alignStatus = cG->alignRead(readStr, match_infos[sum_index].editScript, match_infos[sum_index].pos,
                                              match_infos[sum_index].beginOffset,
                                              match_infos[sum_index].endOffset, match_infos[sum_index].match_length, m_k,
                                              m_w, max_chain_iter);
-            sum_index++;
 //check 条件编译用来判断编辑脚本能否还原出原始序列
 #ifdef CHECKS
             {
                 // Check editScript applied to originalString is readStr
                 std::string origString = std::string(
-                    cG->mainPath.path.begin() +
-                        (beginOffset > 0 ? beginOffset : 0),
-                    cG->mainPath.path.end() + (endOffset > 0 ? 0 : endOffset));
+                        cG->mainPath.path.begin() +
+                        (match_infos[sum_index].beginOffset > 0 ? match_infos[sum_index].beginOffset : 0),
+                        cG->mainPath.path.end() + (match_infos[sum_index].endOffset > 0 ? 0 : match_infos[sum_index].endOffset));
                 std::string targetString = readStr.substr(
-                    beginOffset > 0 ? 0 : -beginOffset,
-                    readStr.length() - (beginOffset > 0 ? 0 : -beginOffset) -
-                        (endOffset > 0 ? endOffset : 0));
+                        match_infos[sum_index].beginOffset > 0 ? 0 : -match_infos[sum_index].beginOffset,
+                        readStr.length() - (match_infos[sum_index].beginOffset > 0 ? 0 : -match_infos[sum_index].beginOffset) -
+                        (match_infos[sum_index].endOffset> 0 ? match_infos[sum_index].endOffset : 0));
                 std::string resultAfterEdit;
                 Edits::applyEdits(
-                    origString.begin(), editScript,
-                    std::inserter(resultAfterEdit, resultAfterEdit.end()));
+                        origString.begin(), match_infos[sum_index].editScript,
+                        std::inserter(resultAfterEdit, resultAfterEdit.end()));
                 if (resultAfterEdit.compare(targetString)) {
-                    std::cout << "beginOffset " << beginOffset << " endOffset "
-                              << endOffset << std::endl;
+                    std::cout << "beginOffset " <<match_infos[sum_index].beginOffset << " endOffset "
+                              << match_infos[sum_index].endOffset << std::endl;
                     std::cout << "origString\n" << origString << std::endl;
                     std::cout << "targetString\n" << targetString << std::endl;
                     std::cout << "resultAfterEdit\n"
                               << resultAfterEdit << std::endl;
                     std::cout << "editScript\n";
-                    for (auto e : editScript)
+                    for (auto e : match_infos[sum_index].editScript)
                         std::cout << e;
                     std::cout << std::endl;
                     std::cout << "mainPath\n"
                               << std::string(cG->mainPath.path.begin(),
                                              cG->mainPath.path.end())
                               << std::endl;
-                    std::cout << "pos " << pos << " endPos " << cG->endPos
+                    std::cout << "pos " << match_infos[sum_index].pos << " endPos " << cG->endPos
                               << " offsetGuess "
-                              << cG->mainPath.path.size() - cG->endPos + pos
+                              << cG->mainPath.path.size() - cG->endPos + match_infos[sum_index].pos
                               << std::endl;
                 }
                 assert(!resultAfterEdit.compare(targetString));
             }
 #endif
 
+            if(alignStatus)
+                sum_index++;
+
+//#ifdef CHECKS
+//            {
+//                // Check editScript applied to originalString is readStr
+//                std::string origString = std::string(
+//                    cG->mainPath.path.begin() +
+//                        (beginOffset > 0 ? beginOffset : 0),
+//                    cG->mainPath.path.end() + (endOffset > 0 ? 0 : endOffset));
+//                std::string targetString = readStr.substr(
+//                    beginOffset > 0 ? 0 : -beginOffset,
+//                    readStr.length() - (beginOffset > 0 ? 0 : -beginOffset) -
+//                        (endOffset > 0 ? endOffset : 0));
+//                std::string resultAfterEdit;
+//                Edits::applyEdits(
+//                    origString.begin(), editScript,
+//                    std::inserter(resultAfterEdit, resultAfterEdit.end()));
+//                if (resultAfterEdit.compare(targetString)) {
+//                    std::cout << "beginOffset " << beginOffset << " endOffset "
+//                              << endOffset << std::endl;
+//                    std::cout << "origString\n" << origString << std::endl;
+//                    std::cout << "targetString\n" << targetString << std::endl;
+//                    std::cout << "resultAfterEdit\n"
+//                              << resultAfterEdit << std::endl;
+//                    std::cout << "editScript\n";
+//                    for (auto e : editScript)
+//                        std::cout << e;
+//                    std::cout << std::endl;
+//                    std::cout << "mainPath\n"
+//                              << std::string(cG->mainPath.path.begin(),
+//                                             cG->mainPath.path.end())
+//                              << std::endl;
+//                    std::cout << "pos " << pos << " endPos " << cG->endPos
+//                              << " offsetGuess "
+//                              << cG->mainPath.path.size() - cG->endPos + pos
+//                              << std::endl;
+//                }
+//                assert(!resultAfterEdit.compare(targetString));
+//            }
+//#endif
+
 
         }
     }
+//#ifdef LOG
+//    std::cout<<"sumindex index :"<<sum_index<<std::endl;
+//#endif
         //如果sum_index==0,说明没有找到相似序列
-        if(sum_index<=0)return false;
+        if(sum_index==0)return false;
         //排序按匹配区间，从前往后取匹配区间最长的序列，因为有可能它找到的最相似的序列，有可能已经被其他线程占用了
         //最长被占用了，就取下一条，依此类推
         std::sort(match_infos.begin(),match_infos.begin()+sum_index,[](const match_info &a,const match_info &b){return  a.match_length>b.match_length;});
         //或许这里还需要加上一一个配区域长度与原有序列的占比的限制条件
 
 
-        read_t choose_index=-1;
-        for(int i=0;i<match_infos.size(); i++)
+        int choose_index=-1;
+        for(int i=0;i<sum_index; i++)
         {
             //给通过比对区域最长的序列加锁,修改状态为已经被合并
             auto r=match_infos[i].vid;
@@ -262,9 +404,9 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
                 }
 
                 // read added to graph
-#ifdef LOG
-                logfile<< "Contig: " << contigId << ", Read passed aligner "<<r<<"\n";
-#endif
+//#ifdef LOG
+//                logfile<< "Contig: " << contigId << ", Read passed aligner "<<r<<"\n";
+//#endif
                 inGraph[r] = true;
                 choose_index=i;
                 readStatusLock[r%numLocks].unlock();
@@ -276,7 +418,13 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
         {
             return  false;
         }
-        //如果图还添加序列，依靠第一条序列初始化
+//#ifdef LOG
+//        if(cG->firstReadId==75)
+//        {
+//            std::cout<<choose_index<<std::endl;
+//        }
+//#endif
+        //如果图还没有添加序列，依靠第一条序列初始化
         if (cG->getNumReads() == 0) {
             std::string mainPathString(cG->mainPath.path);
             cG->mainPath.path.clear();
@@ -286,12 +434,15 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
             cG->calculateMainPathGreedy();
         }
         //更新图，把第choose_index条比对得到的编辑脚本添加到图中
-        std::string readStr;
-        rD->getRead(match_infos[choose_index].vid,readStr);
-        cG->updateGraph(readStr, match_infos[choose_index].editScript, match_infos[choose_index].beginOffset, match_infos[choose_index].endOffset, match_infos[choose_index].id, match_infos[choose_index].pos,
+//        std::string readStr;
+//        rD->getRead(match_infos[choose_index].vid,readStr);
+        auto tmp_ptr=rD->getRead(match_infos[choose_index].vid);
+        cG->updateGraph(tmp_ptr, match_infos[choose_index].editScript, match_infos[choose_index].beginOffset, match_infos[choose_index].endOffset, match_infos[choose_index].id, match_infos[choose_index].pos,
                         match_infos[choose_index].reverseComplement);
-
-
+//#ifdef LOG
+//        std::cout<<"updateGraph SECCEES"<<std::endl;
+//        assert(cG->checkNoCycle());
+//#endif
 #ifdef CHECKS
             assert(checkRead(cG, r));
             assert(cG->checkNoCycle());
@@ -406,13 +557,14 @@ bool Consensus::checkRepetitive(read_t readID){
     return  occurrences.size()<=maxI/2;
 }
 
-void Consensus::initialize() {
+void Consensus::initialize(size_t loopindex) {
     numReads = rD->getNumReads();
     inGraph.resize(numReads, false);
     readStatusLock.resize(numLocks);
     //check if any reads are repetitive
     isRepetitive.resize(numReads, false); 
      size_t countRepeats = 0;
+    if(loopindex>0)return;
 #pragma omp parallel for
     for (read_t i = 0; i < numReads; i++){
         isRepetitive[i] = checkRepetitive(i);
