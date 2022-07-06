@@ -82,7 +82,12 @@ public:
      * @return Node*
      */
     Node *getNextNodeInRead(read_t read) const;
-
+    /**
+     * @param node 入度
+     * @return
+     */
+    size_t getNodeInDegree()const;
+    size_t getNodeOutDergree()const;
     /**
      * Adds an edge starting from this node
      * @param e The edge to add.
@@ -182,12 +187,15 @@ public:
     std::ofstream refidFile;
     std::ofstream idFile;
     std::ofstream complementFile;
+    std::map<read_t, std::shared_ptr<my_read::Read>> readsLone;
 //    std::ofstream genomeFile;
     //lonefile
     //id与序列交互占一行
+    std::ofstream loneidFile;
     std::ofstream loneFile;
     ConsensusGraphWriter(const std::string &filePrefix);
     void closefilestream();
+    void writeLoneReadtoFile();
 };
 
 /**
@@ -201,7 +209,9 @@ class ConsensusGraph {
 public:
     /** Starting and ending positions of mainPath in contig **/
     ssize_t startPos, endPos;
-
+    //图中匹配的两个标志信息，用来后续主链的更新
+    size_t ref_st,ref_ed,que_st,que_ed;
+    size_t que_len;
     Path mainPath;
 
     class Read {
@@ -232,11 +242,13 @@ public:
          * complement in the graph
          */
         Read(long pos, Node *start, size_t len, bool reverseComplement = false);
+        Read(){};
     };
 
 
-    read_t firstReadId; // first read in graph (useful for uninitialized graph with single read)
+    read_t firstReadId;// vid first read in graph (useful for uninitialized graph with single read)
 
+    read_t _firstReadId,_secondReadId; //use for merge read
     /** Maps ID of read to (relative position of read in contig, beginning node
      of the read) **/
     std::map<read_t, Read> readsInGraph;
@@ -247,6 +259,12 @@ public:
      * @return生成新的主链类，
      */
     std::shared_ptr<my_read::Read> get_mainpathread(size_t cnt);
+    /**
+     * @brief 用来生成原有序列和相似序列合并之后，左右两边没有匹配上的子串
+     * @param s
+     * @return 子串的指针
+     */
+    std::shared_ptr<my_read::Read> get_newsubread(std::string &s);
     /**
      * Initializes the graph from a seeding read
      * @param seed
@@ -262,7 +280,7 @@ public:
      */
     __attribute__((warn_unused_result)) bool
     alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter);
+            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length,size_t &editdis,size_t &ref_st,size_t &ref_ed,size_t &que_st,size_t &que_ed,size_t m_k, size_t m_w, size_t max_chain_iter);
 
     /**
      * @brief Updates the graph with the new read s, and the alignment results
@@ -288,7 +306,7 @@ public:
 
     void updateGraph(std::shared_ptr<my_read::Read> &read, std::vector<Edit> &editScript,
                      ssize_t beginOffset, ssize_t endOffset, read_t readId,
-                     long pos, bool reverseComplement);
+                     long pos, bool reverseComplement,size_t ref_st,size_t ref_ed,size_t que_st,size_t que_ed);
     /**
      * Clears the old mainPath, calculates the new mainPath and adds it.
      * Uses dynamic programming.
@@ -305,6 +323,11 @@ public:
      * @return the new mainPath
      */
     Path &calculateMainPathGreedy();
+    /**
+     * @brief 从图中挑出最长序列做后续的主链
+     * @return
+     */
+    Path &calculateMainPath();
 
     /**
      * @brief Prints the mainPath to file tempDir/filename.genome
@@ -328,9 +351,9 @@ public:
      *
      * @param cgw
      */
-    void writeReads(ConsensusGraphWriter &cgw);
+//    void writeReads(ConsensusGraphWriter &cgw);
 
-    void writeReads(ConsensusGraphWriter &cgw,const read_t ref_id);
+    void writeReads(ConsensusGraphWriter &cgw,const read_t ref_id,std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &readvecptr);
     /**
      * @brief Write the streams for the read in lone contig
      *
@@ -338,7 +361,7 @@ public:
      */
     void writeReadLone(ConsensusGraphWriter &cgw);
 
-    void writeReadlone(ConsensusGraphWriter &cgw,const read_t readid);
+    void writeReadlone(ConsensusGraphWriter &cgw,std::shared_ptr<my_read::Read> &readptr);
     /**
      * @brief Write the ids for the lone reads for the thread
      *
@@ -521,7 +544,7 @@ private:
      * @return size_t
      */
     size_t writeRead(std::ofstream &posFile, std::ofstream &editTypeFile,
-                     std::ofstream &editBaseFile, Read &r, read_t id);
+                     std::ofstream &editBaseFile,std::ofstream &refidFile,std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &readvecptr, Read &r, read_t id);
 
 
     /**

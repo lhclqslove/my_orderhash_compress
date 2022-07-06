@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
             "number of hash functions for orderhash (default 60)")(
              "recover-cnt",po::value<size_t>(&recover_cnt)->default_value(3),"Maximum number of additional queries"
                     )(
-            "que_cnt", po::value<size_t>(&que_cnt)->default_value(3),
+            "que_cnt", po::value<size_t>(&que_cnt)->default_value(4),
             "number of read cnt  for every query (default 3)")(
             "max_occ",po::value<size_t>(&max_occ)->default_value(3),"orderhash only sensitive for kmer with occ<maxocc"
                     )(
@@ -166,9 +166,7 @@ int main(int argc, char **argv) {
         std::cout << desc << "\n";
         return 1;
     }
-    std::cout<<"start remove tmp dir"<<std::endl;
     boost::filesystem::remove_all(temp_dir);
-    std::cout<<"remove tmpdir success"<<std::endl;
     temp_dir_flag_global = false;
     return 0;
 }

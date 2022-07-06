@@ -37,7 +37,12 @@ void Edge::addRead(read_t read,size_t w) {
 }
 
 Node::Node(const char base) : base(base) {}
-
+size_t Node::getNodeInDegree() const {
+    return edgesIn.size();
+}
+size_t Node::getNodeOutDergree() const {
+    return  edgesOut.size();
+}
 //找回主链的边
 Edge *Node::getEdgeTo(Node *n) {
     const auto &it = std::find_if(
@@ -134,28 +139,45 @@ ConsensusGraphWriter::ConsensusGraphWriter(const std::string &filePrefix) {
     const std::string complementFileName = filePrefix + ".complement";
     const std::string genomeFileName = filePrefix + ".genome";
     const std::string loneFileName = filePrefix + ".lone";
+    const std::string loneidFileName=filePrefix+".loneid";
     posFile.open(posFileName, std::ios::binary);
     refidFile.open(ref_id,std::ios::binary);
 //    readidFile.open(read_id,std::ios::binary);
     editTypeFile.open(editTypeFileName);
     editBaseFile.open(editBaseFileName);
     idFile.open(idFileName, std::ios::binary);
+    complementFile.open(complementFileName);
 //    genomeFile.open(genomeFileName);
+    loneidFile.open(loneidFileName, std::ios::binary);
     loneFile.open(loneFileName);
+}
+void ConsensusGraphWriter::writeLoneReadtoFile() {
+    read_t pasId = 0;
+    for (auto it : readsLone) {
+            read_t diffId = it.first - pasId;
+            idFile.write((char*)&diffId, std::ios::binary);
+            loneidFile ;
+            DirectoryUtils::write_var_uint32(diffId, loneidFile);
+            std::string readStr1;
+            it.second->read->to_string(readStr1);
+            loneFile<<readStr1<<std::endl;
+            pasId = it.first;
+        }
+    readsLone.clear();
 }
 void ConsensusGraphWriter::closefilestream() {
     posFile.close();
     refidFile.close();
-//    readidFile.open(read_id,std::ios::binary);
     editTypeFile.close();
     editBaseFile.close();
     idFile.close();
-//    genomeFile.open(genomeFileName);
+    complementFile.close();
+    loneidFile.close();
     loneFile.close();
 }
 void ConsensusGraph::initialize(const std::string &seed, read_t readId,
                                 long pos) {
-    // pos is zero here                                
+    // pos is zero here
     size_t len = seed.length();
     Node *currentNode = createNode(seed[0]);
     // We create a read that points to this node
@@ -181,17 +203,44 @@ void ConsensusGraph::initialize(const std::string &seed, read_t readId,
 std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread(size_t cnt)
 {
     //原子操作获取新id
-    size_t newindex=ReadData::index++;
-    if (newindex == std::numeric_limits<read_t>::max())
-        throw std::runtime_error(
-                "Too many reads for read_t type to handle.");
-    std::shared_ptr<my_read::Read> ptr(new my_read::Read(newindex));
+    auto  ptr= std::make_shared<my_read::Read>(ReadData::getnewindex());
+    ptr->read=std::make_unique<DnaBitset>(mainPath.path.c_str(),mainPath.path.size());
     //沿着走一遍获取base和weight
-    ptr->read=std::unique_ptr<DnaBitset>(new DnaBitset(mainPath.path.c_str(),mainPath.path.size()));
-    for (auto e : mainPath.edges) {
+//#ifdef LOG
+//   std::cout<<"len:"<<mainPath.path.size()<<" edge.size"<<mainPath.edges.size()<<std::endl;
+//   std::cout<<mainPath.path<<std::endl;
+//   bool flag=false;
+//#endif
+
+   for (auto &e : mainPath.edges) {
+//#ifdef LOG
+//        if(e== nullptr)
+//        {
+//            std::cout<<"遇到空节点"<<std::endl;
+//        }
+//#endif
         ptr->w.push_back(e->count);
+
+//#ifdef LOG
+//       if(!flag)
+//       {
+//           std::cout<<"成功插入一个"<<std::endl;
+//           flag=true;
+//       }
+//#endif
     }
+//#ifdef LOG
+//
+//    std::cout<<"重新获取权值，插入vector成功"<<std::endl;
+//#endif
     ptr->cnt=cnt;
+    return  ptr;
+}
+std::shared_ptr<my_read::Read> ConsensusGraph::get_newsubread(std::string &s){
+    auto  ptr= std::make_shared<my_read::Read>(ReadData::getnewindex());
+    ptr->read=std::make_unique<DnaBitset>(s.c_str(),s.size());
+    ptr->w.resize(s.size()-1,1);
+    ptr->cnt=ReadData::recover_cnt;
     return  ptr;
 }
 void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long pos) {
@@ -201,6 +250,7 @@ void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long
     size_t len = seed.length();
     Node *currentNode = createNode(seed[0]);
     assert(currentNode);
+    _firstReadId=read->id;
     // We create a read that points to this node
     readsInGraph.insert(std::make_pair(
             read->id, ConsensusGraph::Read(pos, currentNode, seed.length(), false)));
@@ -228,7 +278,7 @@ void ConsensusGraph::initialize(const std::shared_ptr<my_read::Read> &read, long
     // Rest will be inserted later when calculateMainPathGreedy is called
 }
 bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScript, ssize_t &relPos,
-            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length, size_t m_k, size_t m_w, size_t max_chain_iter) {
+            ssize_t &beginOffset, ssize_t &endOffset,ssize_t &match_length, size_t &editdis,size_t &ref_st,size_t &ref_ed,size_t &que_st,size_t &que_ed,size_t m_k, size_t m_w, size_t max_chain_iter) {
     // General comments: 
     // 1. The whole idea behind startPos, endPos and Read.pos in ConsensusGraph
     //    is to provide a reference point for the main path when looking for the next 
@@ -299,13 +349,20 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
         unsigned int count_same;
         int i;
         int alignedLen;
-    	
+
+        ref_st=r->rs;
+        ref_ed=r->re;
+        que_st=r->qs;
+        que_ed=r->qe;
     	//add a filtering metric        
     	//calculate the edit distance
     	editDis = r->blen - r->mlen + r->p->n_ambi;
-    	//calculate the aligned length; notice that I use the aligned length for the query read here
+        editdis=editDis;
+        //calculate the aligned length; notice that I use the aligned length for the query read here
     	alignedLen = r->qe - r->qs;
-        match_length=alignedLen;
+        match_length=r->mlen;
+
+        if(alignedLen<s.size()*0.5&& alignedLen<originalString.size()*0.5)return false;
     	//first check if the read is at the beginnning or the end of reference sequence
         if((r->rs > 0) && (r->re < (ssize_t)originalString.size())){
     		//check editDis/alignedLen
@@ -426,9 +483,9 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
             throw std::runtime_error("Encountered invalid reference end");
         }
 
-#ifdef LOG
-        std::cout<< "editDis: " << editDis<<std::endl;     
-#endif
+//#ifdef LOG
+//        std::cout<< "editDis: " << editDis<<std::endl;
+//#endif
         free(r->p);
         if (hits > 1) {
             // cleanup
@@ -626,7 +683,7 @@ void ConsensusGraph::updateGraph(const std::string &s,
         readId, Read(pos, initialNode, s.length(), reverseComplement)));
 }
 void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vector<Edit> &editScript, ssize_t beginOffset,
-                                 ssize_t endOffset, read_t readId, long pos, bool reverseComplement) {
+                                 ssize_t endOffset, read_t readId, long pos, bool reverseComplement,size_t ref_st,size_t ref_ed,size_t que_st,size_t que_ed) {
     // How does the updateGraph function work (high level)?
     // 1. If beginOffset is -ve, create |beginOffset| new nodes in the graph
     //    joined in a chain representing those bases in read
@@ -638,10 +695,23 @@ void ConsensusGraph::updateGraph(std::shared_ptr<my_read::Read> &read, std::vect
     //    joined in a chain representing those bases in read (the chain begins
     //    in the graph where step 2 ends, which will be roughly the end of mainPath
     //    in this case).
+
+    this->ref_st=ref_st;
+    this->ref_ed=ref_ed;
+    this->que_st=que_st;
+    this->que_st=que_ed;
+    _secondReadId=read->id;
+//#ifdef LOG
+//    std::cout<<"firstReadId:"<<_firstReadId<<" secondReadId:"<<_secondReadId<<std::endl;
+//    std::cout<<mainPath.path<<std::endl;
+//    std::string readStr2;
+//    read->read->to_string(readStr2);
+//    std::cout<<readStr2<<std::endl;
+//#endif
     std::string  s;
     std::string readStr1;
     read->read->to_string(readStr1);
-
+    this->que_len=readStr1.size();
     if (reverseComplement)
         ReadData::toReverseComplement(
                 readStr1.begin(), readStr1.end(),
@@ -914,6 +984,340 @@ Path &ConsensusGraph::calculateMainPathGreedy() {
     leftMostUnchangedNodeOffset = 0;
     return mainPath;
 }
+Path &ConsensusGraph::calculateMainPath() {
+    /**
+     * 首先找到第一个入度为二的节点和最后一个出度为二的节点
+     * 1如果找不到这两个节点，说明只有一条链，用原来贪心地方法更新
+     *
+     * 2如果这两个节点相同，说明两条序列只有一个base相同，基本不可能，情况不存在
+     *
+     * 3如果两个节点只有一个节点存在
+     *
+     * 3.1只有左边存在
+     *
+     * 3.2只有右边存在
+     *
+     * 4两个节点都存在
+     *
+     * 4.1第一个入度为2的节点在最后一个出度为二的节点前面，
+     *
+     * 4.2最后一个出度为2的节点在第一个入度为2的节点前面。(其中一条序列完全被另外一条序列包含了)
+     *
+     *
+     *
+     */
+
+     Node* FirstJionNode= nullptr;
+     Node* FinalJionNode= nullptr;
+     Node* currentNode=mainPath.edges.back()->sink;
+     Node* NextNode= nullptr;
+     Edge* NextEdge= nullptr;
+     ssize_t las_index=mainPath.edges.size()-1;
+     ssize_t first_index=0;
+     auto &stringPath = mainPath.path;
+     auto &edgesInPath = mainPath.edges;
+     auto check=[&](Node* ptr){
+         std::set<Node *>st;
+         bool flag=false;
+         while(ptr!= nullptr)
+         {
+//             ptr->onMainPath=true;
+             if(st.find(ptr)!=st.end())
+             {
+                std::cout<<"图中有环"<<std::endl;
+                 break;
+             }
+             st.insert(ptr);
+             if(ptr==FinalJionNode)
+             {
+                 flag=true;
+                 std::cout<<"能贪心地走到最后相交的节点"<<std::endl;
+             }
+
+             auto  edgeptr=ptr->getBestEdgeOut();
+             if(edgeptr== nullptr)
+             {
+
+                 break;
+             }
+             ptr=edgeptr->sink;
+         }
+         if(!flag)
+         {
+             std::cout<<"已经遍历完全程,但是未到最后的节点"<<std::endl;
+         }
+         else
+         {
+             std::cout<<"能贪心地走到最后相交的节点  成功"<<std::endl;
+         }
+         return  flag;
+     };
+
+     while(las_index>=0)
+     {
+//         if(mainPath.edges[las_index]->sink== nullptr)
+//         {
+//             std::cout<<"遇到空节点了"<<std::endl;
+//         }
+//#ifdef LOG
+//         assert(mainPath.edges[las_index]->sink);
+////         std::cout<<"las_index"<<las_index<<std::endl;
+//#endif
+         if(mainPath.edges[las_index]->sink->getNodeOutDergree()<2){
+             las_index--;
+         }
+         else{
+             FinalJionNode=mainPath.edges[las_index]->sink;
+             break;
+         }
+     }
+     while(first_index<mainPath.edges.size())
+     {
+         if(mainPath.edges[first_index]->source->getNodeInDegree()<2){
+             first_index++;
+         }
+         else
+         {
+             FirstJionNode=mainPath.edges[first_index]->source;
+             break;
+         }
+     }
+
+     auto clearFlag=[&](){
+         for(size_t i=0;i<mainPath.edges.size();i++){
+             mainPath.edges[i]->source->onMainPath= false;
+         }
+         mainPath.edges.back()->sink->onMainPath=false;
+     };
+
+     //1 2 4.2
+     if((FirstJionNode== nullptr&&FinalJionNode== nullptr)||first_index>=las_index){
+//#ifdef LOG
+//         std::cout<<"case 1 2 4.2"<<std::endl;
+//#endif
+         clearMainPath();
+
+         auto &edgesInPath = mainPath.edges;
+         auto &stringPath = mainPath.path;
+
+         // Extend to the right
+         {
+             Node *currentNode = rightMostUnchangedNode;
+             assert(currentNode->onMainPath);
+             Edge *edgeToAdd;
+             while ((edgeToAdd = currentNode->getBestEdgeOut())) {
+                 edgesInPath.push_back(edgeToAdd);
+                 currentNode = edgeToAdd->sink;
+                 currentNode->onMainPath = true;
+                 stringPath.push_back(currentNode->base);
+             }
+             read_t endingReadId = *edgesInPath.back()->reads.begin();
+
+             // TODO: why take the begin (i.e., first read through this last edge in path)?
+             // Is this a relic of the constant read length code?
+             // Doesn't matter since typically only one read at the last edge
+             Read &endingRead = readsInGraph.at(endingReadId);
+             endPos = endingRead.pos + endingRead.len;
+         }
+
+         // Extend to the left
+         // NOTE: I have changed mainPath.path to string to simplify alignment,
+         // but that means the code below is not efficient (inserting to start
+         // of vector). Fortunately, this is currently a very small contributor
+         // to the total time. But we might want to fix this if issues crop up later.
+         {
+             Node *currentNode = leftMostUnchangedNode;
+             assert(currentNode->onMainPath);
+             Edge *edgeToAdd;
+             while ((edgeToAdd = currentNode->getBestEdgeIn())) {
+                 edgesInPath.insert(edgesInPath.begin(), edgeToAdd);
+                 currentNode = edgeToAdd->source;
+
+
+                 currentNode->onMainPath = true;
+                 stringPath.insert(stringPath.begin(), currentNode->base);
+                 leftMostUnchangedNodeOffset++;
+                 rightMostUnchangedNodeOffset++;
+             }
+             read_t startingReadId = *edgesInPath.front()->reads.begin();
+             startPos = readsInGraph.at(startingReadId).pos;
+         }
+         removeCycles();
+         rightMostUnchangedNode = edgesInPath.back()->sink;
+         rightMostUnchangedNodeOffset = edgesInPath.size();
+         leftMostUnchangedNode = edgesInPath.front()->source;
+         leftMostUnchangedNodeOffset = 0;
+
+         return mainPath;
+     }
+     else if(FirstJionNode!= nullptr&&FinalJionNode!= nullptr){//4.1
+//#ifdef LOG
+//         std::cout<<"case 4.1"<<std::endl;
+//#endif
+         //先清空原有标记
+         clearFlag();
+//#ifdef LOG
+//         std::cout<<"清空标记成功"<<std::endl;
+//#endif
+         //mainPath.edges.clear();
+         //判断左右分支长度,选择正确的的起点，以及正确的后继节点
+         if(ref_st<que_st)currentNode=readsInGraph[_secondReadId].start;//选第二条序列的起点
+         else currentNode=readsInGraph[_firstReadId].start;//选第一条的起点
+         if(mainPath.path.size()-ref_ed>que_len-que_ed)NextNode=mainPath.edges[las_index+1]->sink,NextEdge=mainPath.edges[las_index+1];//选主链为后续
+         else{
+             for(auto &edge :FinalJionNode->edgesOut)
+             {
+                 if(edge!=mainPath.edges[las_index+1]){
+                     NextNode=edge->sink;
+                     NextEdge=edge;
+                     break;
+                 }
+             }
+         }
+         assert(currentNode);
+         assert(NextNode);
+         assert(NextEdge);
+//#ifdef LOG
+//         std::cout<<"初始化 currentNode NextNode成功"<<std::endl;
+//#endif
+         //清空序列，和duque,然后重新插入
+         mainPath.path.clear();
+         mainPath.edges.clear();
+         //从头开始插入到finaljionNode
+         Edge *edgeToAdd;
+//#ifdef LOG
+//         std::cout<<"开始check"<<std::endl;
+//        check(currentNode);
+//#endif
+         while(currentNode!=FinalJionNode)
+         {
+             currentNode->onMainPath=true;
+             stringPath.push_back(currentNode->base);
+             edgeToAdd=currentNode->getBestEdgeOut();
+             if(edgeToAdd== nullptr)
+             {
+                 std::cout<<"到最后节点前遇到null 节点"<<std::endl;
+                 break;
+             }
+             edgesInPath.push_back(edgeToAdd);
+             currentNode=edgeToAdd->sink;
+//#ifdef LOG
+//             if(currentNode== nullptr)
+//             {
+//                 std::cout<<"还没到fianl 节点，就遇到Nullptr"<<std::endl;
+//             }
+//#endif
+         }
+//#ifdef LOG
+//             std::cout<<"能走到FInal节点"<<std::endl;
+//#endif
+         FinalJionNode->onMainPath= true;
+         stringPath.push_back( FinalJionNode->base);
+         edgesInPath.push_back(NextEdge);
+         currentNode=NextNode;
+         while(currentNode!= nullptr){
+             currentNode->onMainPath=true;
+             stringPath.push_back(currentNode->base);
+             edgeToAdd=currentNode->getBestEdgeOut();
+             if(edgeToAdd== nullptr)break;
+             edgesInPath.push_back(edgeToAdd);
+             currentNode=edgeToAdd->sink;
+         }
+     }
+     else if(FinalJionNode== nullptr&&FirstJionNode!= nullptr){//3.1
+//#ifdef LOG
+//         std::cout<<"case 3.1"<<std::endl;
+//#endif
+         clearFlag();
+         //判断左边分支长度,选择正确的的起点，
+         if(ref_st<que_st)currentNode=readsInGraph[_secondReadId].start;//选第二条序列的起点
+         else currentNode=readsInGraph[_firstReadId].start;//选第一条的起点
+         assert(currentNode);
+         //清空序列，和duque,然后重新插入
+         mainPath.path.clear();
+         mainPath.edges.clear();
+         Edge *edgeToAdd;
+         while(currentNode!= nullptr){
+             currentNode->onMainPath=true;
+             stringPath.push_back(currentNode->base);
+             edgeToAdd=currentNode->getBestEdgeOut();
+             if(edgeToAdd== nullptr)break;
+             edgesInPath.push_back(edgeToAdd);
+             currentNode=edgeToAdd->sink;
+         }
+     }
+     else if(FinalJionNode!= nullptr&&FirstJionNode== nullptr){//3.2
+//#ifdef LOG
+//         std::cout<<"case 3.2"<<std::endl;
+//#endif
+         clearFlag();
+         currentNode=readsInGraph[_firstReadId].start;
+         if(mainPath.path.size()-ref_ed>que_len-que_ed)NextNode=mainPath.edges[las_index+1]->sink,NextEdge=mainPath.edges[las_index+1];//选主链为后续
+         else{
+             for(auto &edge :FinalJionNode->edgesOut)
+             {
+                 if(edge!=mainPath.edges[las_index+1]){
+                     NextNode=edge->sink;
+                     NextEdge=edge;
+                     break;
+                 }
+             }
+         }
+         assert(currentNode);
+         assert(NextNode);
+         assert(NextEdge);
+         //清空序列，和duque,然后重新插入
+         mainPath.path.clear();
+         mainPath.edges.clear();
+         //从头开始插入到finaljionNode
+         Edge *edgeToAdd;
+//#ifdef LOG
+//         check(currentNode);
+//#endif
+         while(currentNode!=FinalJionNode)
+         {
+             currentNode->onMainPath=true;
+             stringPath.push_back(currentNode->base);
+             edgeToAdd=currentNode->getBestEdgeOut();
+             if(edgeToAdd== nullptr)
+             {
+#ifdef LOG
+                 std::cout<<"还没到fianl 节点，就遇到Nullptr"<<std::endl;
+#endif
+                 break;
+             }
+             edgesInPath.push_back(edgeToAdd);
+             currentNode=edgeToAdd->sink;
+         }
+//#ifdef LOG
+//         std::cout<<"能走到FInal节点"<<std::endl;
+//#endif
+         FinalJionNode->onMainPath= true;
+         stringPath.push_back( FinalJionNode->base);
+         edgesInPath.push_back(NextEdge);
+         currentNode=NextNode;
+         while(currentNode!= nullptr){
+             currentNode->onMainPath=true;
+             stringPath.push_back(currentNode->base);
+             edgeToAdd=currentNode->getBestEdgeOut();
+             if(edgeToAdd== nullptr)break;
+             edgesInPath.push_back(edgeToAdd);
+             currentNode=edgeToAdd->sink;
+         }
+     }
+
+    // rightMostUnchangedNodeOffset = 0;
+    // rightMostUnchangedNode = edgesInPath.front()->source;
+    // printStatus();
+
+//    removeCycles();
+     rightMostUnchangedNode = edgesInPath.back()->sink;
+    rightMostUnchangedNodeOffset = edgesInPath.size();
+    leftMostUnchangedNode = edgesInPath.front()->source;
+    leftMostUnchangedNodeOffset = 0;
+
+    return mainPath;
+}
 
 void ConsensusGraph::clearMainPath() {
     // printStatus();
@@ -1108,8 +1512,25 @@ void ConsensusGraph::splitPath(Node *newPre, Edge *e,
 }
 
 ConsensusGraph::~ConsensusGraph() {
-    // std::cerr << "Removing" << std::endl;
-
+//#ifdef  LOG
+//    std::cout << "*********" << std::endl;
+//    double vm_usage, resident_set;
+//    _mem_usage(vm_usage, resident_set);
+//    int* ptr = new int[1000000000];
+//    _mem_usage(vm_usage, resident_set);
+//    delete [] ptr;
+//    _mem_usage(vm_usage, resident_set);
+//     std::cout << "*********" << std::endl;
+//#endif
+//
+//
+//     std::cout << "Removing" << std::endl;
+//    std::cout << "numEdges:"<<numEdges<<"numNodes:"<< numNodes<< std::endl;
+//#ifdef LOG
+//
+//    std::cout<<"before"<<std::endl;
+//    _mem_usage(vm_usage, resident_set);
+//#endif
     std::vector<Node *> startingNodes;
     for (auto it : readsInGraph)
         startingNodes.push_back(it.second.start);
@@ -1121,6 +1542,10 @@ ConsensusGraph::~ConsensusGraph() {
 
     assert(numEdges == 0);
     assert(numNodes == 0);
+//#ifdef LOG
+//    std::cout<<"after"<<std::endl;
+//    _mem_usage(vm_usage, resident_set);
+//#endif
 }
 
 Node *ConsensusGraph::createNode(char base) {
@@ -1288,7 +1713,36 @@ void ConsensusGraph::removeEdge(Edge *e,
 //              << std::endl;
 //        }
 
-        void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw) {
+//        void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw) {
+//            // First we write the index of each character into the
+//            // cumulativeWeight field of the nodes on mainPath
+//            mainPath.edges.front()->source->cumulativeWeight = 0;
+//            size_t i = 0;
+//            for (auto e : mainPath.edges) {
+//                e->sink->cumulativeWeight = ++i;
+//            }
+//            size_t totalEditDis = 0;
+//
+//            read_t pasId = 0;
+//            for (auto it : readsInGraph) {
+//                {
+//                    read_t diffId = it.first - pasId;
+//                    cgw.idFile.write((char*)&diffId, std::ios::binary);
+//                    cgw.complementFile << (it.second.reverseComplement ? 'c' : 'n');
+//                    pasId = it.first;
+//                }
+//                totalEditDis += writeRead(cgw.posFile, cgw.editTypeFile, cgw.editBaseFile,
+//                                          it.second, it.first);
+//            }
+//            cgw.complementFile << '\n';
+//#ifdef LOG
+//            std::cout << "AvgEditDis "
+//                      << totalEditDis / (double)readsInGraph.size()
+//                      << std::endl;
+//            printStatus();
+//#endif
+//        }
+        void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw,const read_t ref_id,std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &readvecptr){
             // First we write the index of each character into the
             // cumulativeWeight field of the nodes on mainPath
             mainPath.edges.front()->source->cumulativeWeight = 0;
@@ -1301,59 +1755,33 @@ void ConsensusGraph::removeEdge(Edge *e,
             read_t pasId = 0;
             for (auto it : readsInGraph) {
                 {
-                    read_t diffId = it.first - pasId;
-                    cgw.idFile.write((char*)&diffId, std::ios::binary);
-                    cgw.complementFile << (it.second.reverseComplement ? 'c' : 'n');
-                    pasId = it.first;
-                }
-                totalEditDis += writeRead(cgw.posFile, cgw.editTypeFile, cgw.editBaseFile,
-                                          it.second, it.first);
-            }
-            cgw.complementFile << '\n';
-#ifdef LOG
-            std::cout << "AvgEditDis "
-                      << totalEditDis / (double)readsInGraph.size()
-                      << std::endl;
-            printStatus();
-#endif
-        }
-        void ConsensusGraph::writeReads(ConsensusGraphWriter &cgw,const read_t ref_id){
-            // First we write the index of each character into the
-            // cumulativeWeight field of the nodes on mainPath
-            mainPath.edges.front()->source->cumulativeWeight = 0;
-            size_t i = 0;
-            for (auto e : mainPath.edges) {
-                e->sink->cumulativeWeight = ++i;
-            }
-            size_t totalEditDis = 0;
-
-            read_t pasId = 0;
-            for (auto it : readsInGraph) {
-                {
+//                    assert(it.first>pasId);
                     read_t diffId = it.first - pasId;
                     cgw.idFile.write((char*)&diffId, std::ios::binary);
                     cgw.complementFile << (it.second.reverseComplement ? 'c' : 'n');
                     DirectoryUtils::write_var_uint32(ref_id, cgw.refidFile);
                     pasId = it.first;
                 }
-                totalEditDis += writeRead(cgw.posFile, cgw.editTypeFile, cgw.editBaseFile,
+                totalEditDis += writeRead(cgw.posFile, cgw.editTypeFile, cgw.editBaseFile,cgw.refidFile,readvecptr,
                                           it.second, it.first);
             }
-            cgw.complementFile << '\n';
+//            cgw.complementFile << '\n';
 #ifdef LOG
-            std::cout << "AvgEditDis "
-                      << totalEditDis / (double)readsInGraph.size()
-                      << std::endl;
-            printStatus();
+//            std::cout << "AvgEditDis "
+//                      << totalEditDis / (double)readsInGraph.size()
+//                      << std::endl;
+//            printStatus();
 #endif
         }
 
         void ConsensusGraph::writeReadLone(ConsensusGraphWriter &cgw) {
             cgw.loneFile << std::string(mainPath.path.begin(), mainPath.path.end()) << std::endl;
         }
-        void ConsensusGraph::writeReadlone(ConsensusGraphWriter &cgw,const read_t readid){
-            cgw.loneFile<<std::to_string(readid)<<std::endl;
-            cgw.loneFile<<std::string(mainPath.path.begin(), mainPath.path.end())<<std::endl;
+        void ConsensusGraph::writeReadlone(ConsensusGraphWriter &cgw,std::shared_ptr<my_read::Read> &readptr){
+//            size_t readid=readptr->id;
+//            cgw.loneFile<<std::to_string(readid)<<std::endl;
+//            cgw.loneFile<<std::string(mainPath.path.begin(), mainPath.path.end())<<std::endl;
+              cgw.readsLone.insert(std::make_pair(readptr->id,readptr));
         }
 
         void ConsensusGraph::writeIdsLone(ConsensusGraphWriter &cgw, std::vector<read_t> &loneReads) {
@@ -1401,15 +1829,15 @@ void ConsensusGraph::removeEdge(Edge *e,
                 return editDis;
             }
 
-            pos = curNode->cumulativeWeight;
+                pos = curNode->cumulativeWeight;
 
-            size_t editDis = 0;
-            size_t posInMainPath = curNode->cumulativeWeight;
-            curNode = r.start;
-            size_t unchangedCount = 0;
-            auto dealWithUnchanged = [&unchangedCount, &editScript]() {
-                if (unchangedCount > 0) {
-                    editScript.push_back(Edit(SAME, unchangedCount));
+                size_t editDis = 0;
+                size_t posInMainPath = curNode->cumulativeWeight;
+                curNode = r.start;
+                size_t unchangedCount = 0;
+                auto dealWithUnchanged = [&unchangedCount, &editScript]() {
+                    if (unchangedCount > 0) {
+                        editScript.push_back(Edit(SAME, unchangedCount));
                     unchangedCount = 0;
                 }
             };
@@ -1439,7 +1867,7 @@ void ConsensusGraph::removeEdge(Edge *e,
 
         size_t ConsensusGraph::writeRead(std::ofstream &posFile,
                                          std::ofstream &editTypeFile,
-                                         std::ofstream &editBaseFile, Read &r,
+                                         std::ofstream &editBaseFile,std::ofstream &refidFile,std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &readvecptr, Read &r,
                                          read_t id) {
 
             uint32_t offset;
@@ -1459,24 +1887,51 @@ void ConsensusGraph::removeEdge(Edge *e,
             //find the number of consecutive insertions at beginning
             uint32_t numInsStart = 0;
             uint32_t numInsEnd = 0;
+            std::string subread;
             for (size_t i = 0; i != newEditScript.size(); i++){
             	if(newEditScript[i].editType != INSERT)
             		break;
             	numInsStart++;
+                subread.push_back(newEditScript[i].editInfo.ins);
             	//write the inserted bases to .base
-            	editBaseFile << newEditScript[i].editInfo.ins;
+//            	editBaseFile << newEditScript[i].editInfo.ins;
+            }
+            //前段不为空，转发到下一层
+            if(numInsStart!=0)
+            {
+                readvecptr->emplace_back(get_newsubread(subread));
+                DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
+            }
+            else
+            {
+                DirectoryUtils::write_var_uint32(0, refidFile);//为空写入0,0代表空序列
             }
             //check if it is the case with all insertion
+            subread.clear();
             if(numInsStart != newEditScript.size()){
             	//find the number of consecutive insertions at end
 	            for (int64_t i = newEditScript.size()-1; i >=0; i--){
 	            	if(newEditScript[i].editType != INSERT)
 	            		break;
 	            	numInsEnd++;
+                    subread.push_back(newEditScript[i].editInfo.ins);
 	            }     
-	        }       
+	        }
+           std::reverse(subread.begin(),subread.end());
+            if(numInsEnd!=0)
+            {
+                readvecptr->emplace_back(get_newsubread(subread));
+                DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
+            }
+            else
+            {
+                DirectoryUtils::write_var_uint32(0, refidFile);//为空写入0,0代表空序列
+            }
+
+
+
             //Write numInsStart to .pos
-            DirectoryUtils::write_var_uint32(numInsStart, posFile);
+//            DirectoryUtils::write_var_uint32(numInsStart, posFile);
 
             uint32_t unchangedCount = 0;
             //Go through editScript from numInsStart to lenEditScript-numInsEnd

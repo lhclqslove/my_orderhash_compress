@@ -65,6 +65,7 @@ void OrderHashReadFilter::string2Sketch(const std::string &s, kMer_t *sketch, st
         for (size_t j = 0; j < numKMers; j++) {
             //还是只hashkmer
             kMers[j].hash=hasher((randNumbers[i]^kMers[j].kmer)+kMers[j].occ);
+//            kMers[j].hash=hasher((randNumbers[i]^kMers[j].kmer));
 //            //初始化随机种子
 //            hash.reset(randNumbers[i]);
 //            //拆入kmer和occ
@@ -186,6 +187,7 @@ OrderHashReadFilter::OrderHashReadFilter() {}
 OrderHashReadFilter::~OrderHashReadFilter() {
     if (randNumbers)
         delete[] randNumbers;
+
 }
 size_t OrderHashReadFilter::que_cnt;
 size_t OrderHashReadFilter::max_occ;

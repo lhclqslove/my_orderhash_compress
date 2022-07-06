@@ -10,6 +10,7 @@
 #include "ReadData.h"
 #include "omp.h"
 #include "ReadFilter.h"
+#include "DirectoryUtils.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,6 +41,8 @@ struct match_info
 {
     read_t vid;//在rD类中下标id
     read_t id;//序列的唯一id
+    size_t editdis;
+    size_t ref_st,ref_ed,que_st,que_ed;
     std::vector<Edit> editScript;
     ssize_t beginOffset, endOffset;
     ssize_t pos;
@@ -68,7 +71,7 @@ public:
      * @brief Generates consensus, calls writeReads and writeMainPath on each
      * of the consensus graphs, and combines their output
      */
-    void generateAndWriteConsensus(size_t loopindex);
+    void generateAndWriteConsensus(size_t loopindex,read_t &mergeCnt);
 
     void writeLoneReadtofile(size_t loopindex);
     /**

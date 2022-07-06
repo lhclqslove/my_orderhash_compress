@@ -149,7 +149,7 @@ public:
     static bool  string2KMers(const std::string &s,const size_t k,const size_t l,std::vector<mer_info> &KMers_info);
 private:
     ReadData *rD;
-    std::vector<size_t> *readPos;
+//    std::vector<size_t> *readPos;
 //    std::vector<std::pair<size_t, read_t>> readPosSorted;
     read_t numReads;
     std::vector<BBHashMap> hashTables; // vector of size n to store the n hash maps

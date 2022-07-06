@@ -72,7 +72,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
 #pragma omp parallel for
         for (size_t i = 0; i < numReadsCurrBlock; i++) {
             std::shared_ptr<my_read::Read> ptr(new my_read::Read(
-                    lines[i],numReadsInserted+i,recover_cnt));
+                    lines[i],numReadsInserted+i+1,recover_cnt));
             (*readData)[numReadsInserted+i] = std::move(ptr);
         }
         numReadsInserted += numReadsCurrBlock;
@@ -80,7 +80,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
             break;
         numReadsCurrBlock = 0;
     }
-    index=numReads;//初始化位序列数，原始序列的下标为[0,numread-1]
+    index=numReads+1;//初始化位序列数，原始序列的下标为[1,numread],0用来表示编辑脚本的空序列
     sequence_number_threshold=numReads/100;//序列数限制
 
     assert(numReads != 0);
@@ -117,7 +117,21 @@ std::shared_ptr<my_read::Read> ReadData::getRead(read_t readid) {
 void ReadData::getindex(read_t readId, read_t &index) {
     index=(*readData)[readId]->id;
 }
+read_t  ReadData::getnewindex() {
+    size_t newindex=ReadData::index++;
+    if (newindex == std::numeric_limits<read_t>::max())
+        throw std::runtime_error(
+                "Too many reads for read_t type to handle.");
+    return  newindex;
+}
 void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads) {
+#ifdef LOG
+    assert(readData.unique());
+    if(!readData.unique())
+    {
+        std::cout<<"readData 不是unique，有内存泄露"<<std::endl;
+    }
+#endif
     readData=reads;
     numReads=reads->size();
     maxReadLen=0;
@@ -128,6 +142,7 @@ void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Rea
 }
 size_t ReadData::sequence_number_threshold=0;
 std::atomic<read_t> ReadData::index;
+size_t ReadData::recover_cnt=0;
 /// TODO: profile and maybe optimize
 char ReadData::toComplement(char base) {
     switch (base) {

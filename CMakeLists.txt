@@ -24,7 +24,7 @@ if(result)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-#set(LOG True)
+set(LOG True)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")#构建类型
 message(STATUS "CHECKS=${CHECKS} (Use -DCHECKS=True to enable all checks")
@@ -214,7 +214,7 @@ target_link_libraries(springlib
 
 target_link_libraries(springlib
         PUBLIC
-        $<$<CONFIG:Debug>:-fsanitize=address -fno-omit-frame-pointer>)
+        $<$<CONFIG:Debug>: -fsanitize=address -fno-omit-frame-pointer>)
 # OpenMp support
 if(OpenMP_CXX_FOUND)
     target_link_libraries(springlib PUBLIC OpenMP::OpenMP_CXX)
