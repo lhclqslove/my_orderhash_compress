@@ -362,7 +362,20 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
     	alignedLen = r->qe - r->qs;
         match_length=r->mlen;
 
-        if(alignedLen<s.size()*0.5&& alignedLen<originalString.size()*0.5)return false;
+        if(alignedLen<s.size()*0.5&& alignedLen<originalString.size()*0.5){
+            free(r->p);
+            if (hits > 1) {
+                // cleanup
+                for (int i = 1; i < hits; i++)
+                    free(reg[i].p);
+            }
+//            success=false;
+            free(reg);
+            mm_tbuf_destroy(b);
+            mm_idx_destroy(idx);
+            return false;
+        }
+
     	//first check if the read is at the beginnning or the end of reference sequence
         if((r->rs > 0) && (r->re < (ssize_t)originalString.size())){
     		//check editDis/alignedLen
@@ -1881,7 +1894,7 @@ void ConsensusGraph::removeEdge(Edge *e,
             size_t editDis = read2EditScript(r, id, editScript, offset);
             //posFile.write((char*)&offset,sizeof(uint32_t));
             DirectoryUtils::write_var_uint32(offset, posFile);
-
+            static int readnum=0;
             std::vector<Edit> newEditScript;
             editDis = Edit::optimizeEditScript(editScript, newEditScript);
             //find the number of consecutive insertions at beginning
@@ -1899,6 +1912,7 @@ void ConsensusGraph::removeEdge(Edge *e,
             //前段不为空，转发到下一层
             if(numInsStart!=0)
             {
+                if(subread.size()>100)readnum++;
                 readvecptr->emplace_back(get_newsubread(subread));
                 DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
             }
@@ -1920,6 +1934,7 @@ void ConsensusGraph::removeEdge(Edge *e,
            std::reverse(subread.begin(),subread.end());
             if(numInsEnd!=0)
             {
+                if(subread.size()>100)readnum++;
                 readvecptr->emplace_back(get_newsubread(subread));
                 DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
             }
@@ -1927,6 +1942,11 @@ void ConsensusGraph::removeEdge(Edge *e,
             {
                 DirectoryUtils::write_var_uint32(0, refidFile);//为空写入0,0代表空序列
             }
+#ifdef LOG
+            ;;;
+
+            std::cout<<"new readnum>100:"<<readnum<<std::endl;
+#endif
 
 
 

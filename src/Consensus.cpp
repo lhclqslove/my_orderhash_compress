@@ -80,13 +80,13 @@ void Consensus::generateAndWriteConsensus(size_t loopindex,read_t &mergeCnt) {
 //#endif
         // guarantee that all reads < firstUnaddedRead have been picked
         while ((cG = createGraph(firstUnaddedRead))) {
-#ifdef LOG
-            std::cout<<cG->firstReadId<<" ************"<<rD->getRead(cG->firstReadId)->cnt<<std::endl;
-            if( cG->firstReadId%1000==0)
-            {
-                std::cout<<"loopindex:"<<loopindex<<" "<<cG->mainPath.path<<" "<<cG->mainPath.path.size()<<std::endl;
-            }
-#endif
+//#ifdef LOG
+//            std::cout<<cG->firstReadId<<" ************"<<rD->getRead(cG->firstReadId)->cnt<<std::endl;
+//            if( cG->firstReadId%1000==0)
+//            {
+//                std::cout<<"loopindex:"<<loopindex<<" "<<cG->mainPath.path<<" "<<cG->mainPath.path.size()<<std::endl;
+//            }
+//#endif
             if (isRepetitive[cG->firstReadId]||cG->mainPath.path.size()<100)//自重复的直接压缩或者小于200
             {
                 std::shared_ptr<my_read::Read> tmp_ptr;
@@ -499,8 +499,8 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
             assert(checkRead(cG, r));
             assert(cG->checkNoCycle());
 #endif
-            cG->calculateMainPathGreedy();
-//              cG->calculateMainPath();
+//            cG->calculateMainPathGreedy();
+              cG->calculateMainPath();
 #ifdef CHECKS
             // std::cout << "Added read " << r << " first unadded read "
             //           << firstUnaddedRead << std::endl;

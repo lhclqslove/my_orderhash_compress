@@ -58,8 +58,13 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
         rD.tempDir = tempDir;
         ReadData::recover_cnt=recover_cnt;
         auto read_start = std::chrono::high_resolution_clock::now();
+#ifdef LOG
+        std::cout<<"start load file done here"<<std::endl;
+#endif
         rD.loadFromFile(inputFileName, filetype);
-
+#ifdef LOG
+        std::cout<<"finish load file done here"<<std::endl;
+#endif
         auto read_end = std::chrono::high_resolution_clock::now();
         auto duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(read_end - read_start);
@@ -69,7 +74,7 @@ void Compressor::compress(const char *inputFileName, const int numThr) const {
         mem_usage(vm_usage, resident_set);
         size_t lcnt=0;
 //        size_t occ_cnt=0;
-        while(rD.getNumReads()>ReadData::sequence_number_threshold&&loop_index<1)
+        while(rD.getNumReads()>ReadData::sequence_number_threshold)
 //       while(rD.getNumReads()>1)
         {
                 OrderHashReadFilter rF;

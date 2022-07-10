@@ -80,6 +80,7 @@ void ReadData::loadFromFastqFile(const char *fileName, bool gzip_flag) {
             break;
         numReadsCurrBlock = 0;
     }
+
     index=numReads+1;//初始化位序列数，原始序列的下标为[1,numread],0用来表示编辑脚本的空序列
     sequence_number_threshold=numReads/100;//序列数限制
 
