@@ -431,10 +431,11 @@ bool  Consensus::addRelatedReads(ConsensusGraph *cG)
 
 
         std::sort(match_infos.begin(),match_infos.begin()+sum_index,[](const match_info &a,const match_info &b){return  a.match_length>b.match_length;});
+//        std::sort(match_infos.begin(),match_infos.begin()+sum_index,[](const match_info &a,const match_info &b){return  a.editdis<b.editdis;});
 
 
 
-        int choose_index=-1;
+    int choose_index=-1;
         for(int i=0;i<sum_index; i++)
         {
             //给通过比对区域最长的序列加锁,修改状态为已经被合并

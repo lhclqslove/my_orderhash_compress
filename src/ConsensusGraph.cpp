@@ -107,7 +107,11 @@ Node *Node::getNextNodeInRead(read_t read) const {
     Edge *e = getEdgeInRead(read);
     return e ? e->sink : nullptr;
 }
-
+Node *Node::getNextNodeInRead(read_t read,std::vector<size_t> &w) const {
+    Edge *e = getEdgeInRead(read);
+    if(e!= nullptr)w.push_back(e->count);
+    return e ? e->sink : nullptr;
+}
 double Path::getAverageWeight() {
     size_t totalWeight = 0;
     for (Edge *e : edges)
@@ -236,10 +240,10 @@ std::shared_ptr<my_read::Read> ConsensusGraph::get_mainpathread(size_t cnt)
     ptr->cnt=cnt;
     return  ptr;
 }
-std::shared_ptr<my_read::Read> ConsensusGraph::get_newsubread(std::string &s){
+std::shared_ptr<my_read::Read> ConsensusGraph::get_newsubread(std::string &s,std::vector<size_t>::iterator st,std::vector<size_t>::iterator ed){
     auto  ptr= std::make_shared<my_read::Read>(ReadData::getnewindex());
     ptr->read=std::make_unique<DnaBitset>(s.c_str(),s.size());
-    ptr->w.resize(s.size()-1,1);
+    ptr->w.assign(st,ed);
     ptr->cnt=ReadData::recover_cnt;
     return  ptr;
 }
@@ -362,7 +366,7 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
     	alignedLen = r->qe - r->qs;
         match_length=r->mlen;
 
-        if(alignedLen<s.size()*0.5&& alignedLen<originalString.size()*0.5){
+        if(alignedLen<s.size()*0.25){
             free(r->p);
             if (hits > 1) {
                 // cleanup
@@ -379,8 +383,8 @@ bool ConsensusGraph::alignRead(const std::string &s, std::vector<Edit> &editScri
     	//first check if the read is at the beginnning or the end of reference sequence
         if((r->rs > 0) && (r->re < (ssize_t)originalString.size())){
     		//check editDis/alignedLen
-    		// std::cout<<"editDis/alignedLen: "<< editDis/(double)alignedLen<<std::endl;
-    		// std::cout<<"(double)alignedLen/s.length() "<< (double)alignedLen/s.length()<<std::endl;    		
+//    		 std::cout<<"editDis/alignedLen: "<< editDis/(double)alignedLen<<std::endl;
+//    		 std::cout<<"(double)alignedLen/s.length() "<< (double)alignedLen/s.length()<<std::endl;
             // 1.0 and 0.0: no filter
             if(editDis/(double)alignedLen >= 1.0 || (double)alignedLen/s.length()<=0.0 ){
 	    		success = false;
@@ -1813,7 +1817,7 @@ void ConsensusGraph::removeEdge(Edge *e,
         size_t ConsensusGraph::
         read2EditScript(ConsensusGraph::Read &r,
                                                read_t id,
-                                               std::vector<Edit> &editScript,
+                                               std::vector<Edit> &editScript,std::vector<size_t> &w,
                                                uint32_t &pos) {
             editScript.clear();
             // First we store the initial position
@@ -1871,7 +1875,7 @@ void ConsensusGraph::removeEdge(Edge *e,
                     editScript.push_back(Edit(INSERT, curNode->base));
                     editDis++;
                 }
-            } while ((curNode = curNode->getNextNodeInRead(id)));
+            } while ((curNode = curNode->getNextNodeInRead(id,w)));
 
             dealWithUnchanged();
 
@@ -1885,13 +1889,14 @@ void ConsensusGraph::removeEdge(Edge *e,
 
             uint32_t offset;
             std::vector<Edit> editScript;
+            std::vector<size_t> w;
 //#ifdef LOG
 //            if(r.start== nullptr)
 //            {
 //                std::cout<<id<<" "<<r.reverseComplement<<" "<<r.pos<<std::endl;
 //            }
 //#endif
-            size_t editDis = read2EditScript(r, id, editScript, offset);
+            size_t editDis = read2EditScript(r, id, editScript,w ,offset);
             //posFile.write((char*)&offset,sizeof(uint32_t));
             DirectoryUtils::write_var_uint32(offset, posFile);
             static int readnum=0;
@@ -1913,7 +1918,7 @@ void ConsensusGraph::removeEdge(Edge *e,
             if(numInsStart!=0)
             {
                 if(subread.size()>100)readnum++;
-                readvecptr->emplace_back(get_newsubread(subread));
+                readvecptr->emplace_back(get_newsubread(subread,w.begin(),w.begin()+subread.size()-1));
                 DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
             }
             else
@@ -1935,18 +1940,18 @@ void ConsensusGraph::removeEdge(Edge *e,
             if(numInsEnd!=0)
             {
                 if(subread.size()>100)readnum++;
-                readvecptr->emplace_back(get_newsubread(subread));
+                readvecptr->emplace_back(get_newsubread(subread,w.end()-subread.size()+1,w.end()));
                 DirectoryUtils::write_var_uint32(readvecptr->back()->id, refidFile);
             }
             else
             {
                 DirectoryUtils::write_var_uint32(0, refidFile);//为空写入0,0代表空序列
             }
-#ifdef LOG
-            ;;;
-
-            std::cout<<"new readnum>100:"<<readnum<<std::endl;
-#endif
+//#ifdef LOG
+//            ;;;
+//
+//            std::cout<<"new readnum>100:"<<readnum<<std::endl;
+//#endif
 
 
 

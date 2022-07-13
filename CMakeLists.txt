@@ -55,7 +55,14 @@ set( Boost_NO_SYSTEM_PATHS ON ) # do not use system boost
 add_subdirectory(boost-cmake)
 
 #xxhash
-find_package(xxHash 0.7 CONFIG REQUIRED)
+option(BUILD_SHARED_LIBS "Build shared libs" OFF) #optional
+
+set(XXHASH_BUILD_ENABLE_INLINE_API OFF) #optional
+set(XXHASH_BUILD_XXHSUM OFF) #optional
+add_subdirectory(xxHash-dev/cmake_unofficial xxHash-dev/build EXCLUDE_FROM_ALL)
+
+#target_link_libraries(MyTarget PRIVATE xxHash::xxhash)
+#find_package(xxHash 0.7 CONFIG REQUIRED)
 #######################################################
 #######################################################
 # libbsc 通用压缩器，用于之后的通用压缩

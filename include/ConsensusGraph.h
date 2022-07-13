@@ -82,6 +82,7 @@ public:
      * @return Node*
      */
     Node *getNextNodeInRead(read_t read) const;
+    Node *getNextNodeInRead(read_t read,std::vector<size_t> &w) const;
     /**
      * @param node 入度
      * @return
@@ -264,7 +265,7 @@ public:
      * @param s
      * @return 子串的指针
      */
-    std::shared_ptr<my_read::Read> get_newsubread(std::string &s);
+    std::shared_ptr<my_read::Read> get_newsubread(std::string &s,std::vector<size_t>::iterator st,std::vector<size_t>::iterator ed);
     /**
      * Initializes the graph from a seeding read
      * @param seed
@@ -343,7 +344,7 @@ public:
      * main path must store their positions on main path (starting with 0)
      * @param pos outputs the relative position in mainPath
      */
-    size_t read2EditScript(Read &r, read_t id, std::vector<Edit> &editScript,
+    size_t read2EditScript(Read &r, read_t id, std::vector<Edit> &editScript,std::vector<size_t> &w,
                            uint32_t &pos);
 
     /**

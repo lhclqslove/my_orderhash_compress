@@ -126,13 +126,13 @@ read_t  ReadData::getnewindex() {
     return  newindex;
 }
 void ReadData::setReads(std::shared_ptr<std::vector<std::shared_ptr<my_read::Read>>> &reads) {
-#ifdef LOG
-    assert(readData.unique());
-    if(!readData.unique())
-    {
-        std::cout<<"readData 不是unique，有内存泄露"<<std::endl;
-    }
-#endif
+//#ifdef LOG
+//    assert(readData.unique());
+//    if(!readData.unique())
+//    {
+//        std::cout<<"readData 不是unique，有内存泄露"<<std::endl;
+//    }
+//#endif
     readData=reads;
     numReads=reads->size();
     maxReadLen=0;
